@@ -70,17 +70,19 @@
 }
 
 /* ===== 页码 ===== */
-.red-content-section {
-    position: relative;
-}
-
 .red-page-number {
-    display: block;
-    text-align: right;
+    position: absolute;
+    right: 28px;
+    bottom: 22px;
+    z-index: 2;
     font-size: 12px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
     color: rgba(128, 128, 128, 0.65);
-    margin-top: 12px;
-    padding-top: 6px;
     user-select: none;
     pointer-events: none;
+}
+
+.red-image-preview.red-page-number-above-footer .red-page-number {
+    bottom: 64px;
 }

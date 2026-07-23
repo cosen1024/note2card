@@ -168,6 +168,7 @@ export class RedView extends ItemView {
             this.navigationButtons.indicator.textContent = '0/0';
             this.navigationButtons.prev.classList.add('red-nav-hidden');
             this.navigationButtons.next.classList.add('red-nav-hidden');
+            this.updatePageNumberLabel(0);
             this.updateHeaderVisibility();
             return;
         }
@@ -186,6 +187,7 @@ export class RedView extends ItemView {
         this.navigationButtons.prev.classList.toggle('red-nav-hidden', this.currentImageIndex === 0);
         this.navigationButtons.next.classList.toggle('red-nav-hidden', this.currentImageIndex === sections.length - 1);
         this.navigationButtons.indicator.textContent = `${this.currentImageIndex + 1}/${sections.length}`;
+        this.updatePageNumberLabel(sections.length);
         this.updateHeaderVisibility();
     }
 
@@ -214,18 +216,31 @@ export class RedView extends ItemView {
     private updatePageNumbers(): void {
         const settings = this.settingsManager.getSettings();
         const sections = this.previewEl.querySelectorAll<HTMLElement>('.red-content-section');
+        const imagePreview = this.previewEl.querySelector<HTMLElement>('.red-image-preview');
         const total = sections.length;
 
-        sections.forEach((section, i) => {
-            section.querySelector('.red-page-number')?.remove();
+        this.previewEl.querySelectorAll('.red-page-number').forEach(pageNumber => pageNumber.remove());
+        imagePreview?.classList.remove('red-page-number-above-footer');
 
-            if (settings.showPageNumber) {
-                const pageNum = document.createElement('div');
-                pageNum.className = 'red-page-number';
-                pageNum.textContent = `${i + 1} / ${total}`;
-                section.appendChild(pageNum);
-            }
-        });
+        if (!settings.showPageNumber || total === 0 || !imagePreview) return;
+
+        const footer = imagePreview.querySelector<HTMLElement>('.red-preview-footer');
+        imagePreview.classList.toggle(
+            'red-page-number-above-footer',
+            Boolean(footer?.childElementCount)
+        );
+
+        const pageNum = document.createElement('div');
+        pageNum.className = 'red-page-number';
+        imagePreview.appendChild(pageNum);
+        this.updatePageNumberLabel(total);
+    }
+
+    private updatePageNumberLabel(total: number): void {
+        const pageNum = this.previewEl.querySelector<HTMLElement>('.red-page-number');
+        if (!pageNum || total === 0) return;
+
+        pageNum.textContent = `${this.currentImageIndex + 1} / ${total}`;
     }
 
     private isTextSplittableElement(element: HTMLElement): boolean {

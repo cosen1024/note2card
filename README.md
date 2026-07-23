@@ -36,6 +36,7 @@ npm run build
 node tests/pagination-splitting.test.js
 node tests/pagination-behavior.test.js
 node tests/export-all-pages.test.js
+node tests/page-number-layout.test.js
 node tests/plugin-identity.test.js
 ```
 

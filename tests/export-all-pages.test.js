@@ -25,4 +25,16 @@ assert.match(
   'bulk export should force deterministic inline visibility per exported page'
 );
 
+assert.match(
+  source,
+  /pageNumberEl\.textContent = `\$\{i \+ 1\} \/ \$\{totalSections\}`;/,
+  'bulk export should update the fixed page number for every exported page'
+);
+
+assert.match(
+  source,
+  /pageNumberEl\.textContent = originalPageNumberText;/,
+  'bulk export should restore the preview page number after export'
+);
+
 console.log('export all pages assertions passed');

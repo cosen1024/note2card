@@ -38,6 +38,8 @@ export class DownloadManager {
             }));
             const headerEl = element.querySelector<HTMLElement>('.red-preview-header');
             const originalHeaderDisplay = headerEl?.style.display ?? '';
+            const pageNumberEl = element.querySelector<HTMLElement>('.red-page-number');
+            const originalPageNumberText = pageNumberEl?.textContent ?? '';
 
             for (let i = 0; i < totalSections; i++) {
                 sections.forEach((section, sectionIndex) => {
@@ -51,6 +53,9 @@ export class DownloadManager {
                     } else {
                         headerEl.style.display = '';
                     }
+                }
+                if (pageNumberEl) {
+                    pageNumberEl.textContent = `${i + 1} / ${totalSections}`;
                 }
 
                 // 确保浏览器完成重绘并等待资源加载
@@ -96,6 +101,9 @@ export class DownloadManager {
             });
             if (headerEl) {
                 headerEl.style.display = originalHeaderDisplay;
+            }
+            if (pageNumberEl) {
+                pageNumberEl.textContent = originalPageNumberText;
             }
 
             // 创建下载
