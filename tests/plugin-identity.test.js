@@ -8,11 +8,23 @@ const manifest = JSON.parse(
 );
 const viewSource = fs.readFileSync(path.join(root, 'src', 'view.ts'), 'utf8');
 const mainSource = fs.readFileSync(path.join(root, 'src', 'main.ts'), 'utf8');
+const donateSource = fs.readFileSync(path.join(root, 'src', 'donateManager.ts'), 'utf8');
 
 assert.strictEqual(
   manifest.version,
   '1.0.0',
   'manifest version should be 1.0.0'
+);
+
+assert.strictEqual(manifest.author, '库森', 'manifest author should identify the current maintainer');
+assert.match(viewSource, /关于作者/, 'toolbar button should retain the familiar 关于作者 label');
+assert.match(donateSource, /text: '关于作者'/, 'about dialog should use 关于作者 as its title');
+assert.match(donateSource, /【库森】/, 'about dialog should introduce 库森');
+assert.match(donateSource, /kusen-wechat\.jpg/, 'about dialog should bundle 库森的微信二维码');
+assert.doesNotMatch(
+  donateSource,
+  /assets\/(donateQR|mpQR)/,
+  'the about dialog must not bundle the previous author QR codes'
 );
 
 assert.match(

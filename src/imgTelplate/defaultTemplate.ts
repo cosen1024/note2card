@@ -188,7 +188,7 @@ export class DefaultTemplate implements ImgTemplate {
         const handleBlur = async () => {
             const newName = input.value.trim();
             await this.settingsManager.updateSettings({
-                userName: newName || '夜半'
+                userName: newName || '库森'
             });
             await this.onSettingsUpdate();
             input.replaceWith(element);
@@ -213,7 +213,7 @@ export class DefaultTemplate implements ImgTemplate {
         const handleBlur = async () => {
             const newId = input.value.trim();
             await this.settingsManager.updateSettings({
-                userId: newId || '@Yeban'
+                userId: newId || '@库森'
             });
             await this.onSettingsUpdate();
             input.replaceWith(element);
@@ -238,8 +238,8 @@ export class DefaultTemplate implements ImgTemplate {
         const handleBlur = async () => {
             const newText = input.value.trim();
             const settings = position === 'left' 
-                ? { footerLeftText: newText || '夜半过后，光明便启程' }
-                : { footerRightText: newText || '欢迎关注公众号：夜半' };
+                ? { footerLeftText: newText || '库森｜AI 工具与效率实践' }
+                : { footerRightText: newText || '持续分享 AI 与创作工具' };
             
             await this.settingsManager.updateSettings(settings);
             await this.onSettingsUpdate();

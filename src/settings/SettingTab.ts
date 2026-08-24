@@ -122,7 +122,7 @@ export class RedSettingTab extends PluginSettingTab {
         // 自动分页
         new Setting(typographyContent)
             .setName('自动分页')
-            .setDesc('内容超过最大高度时自动分割为多页（无需手动插入 --- ）')
+            .setDesc('按卡片真实排版测量内容；图片放不下时会优先等比缩小，避免产生大量空白页')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settingsManager.getSettings().autoPaginate ?? false)
                 .onChange(async (value) => {
@@ -133,14 +133,14 @@ export class RedSettingTab extends PluginSettingTab {
 
         // 最大页面高度
         const maxHeightSetting = new Setting(typographyContent)
-            .setName('最大页面高度 (px)')
-            .setDesc(`超过此高度的内容将被拆分到下一页。当前推荐 ${getRecommendedHeight()} px`)
+            .setName('每页内容高度上限 (px)')
+            .setDesc(`数值越大，每页内容越多、总页数越少。当前推荐 ${getRecommendedHeight()} px`)
             .addText(text => text
                 .setPlaceholder(String(getRecommendedHeight()))
                 .setValue(String(this.plugin.settingsManager.getSettings().cardMaxHeight ?? getRecommendedHeight()))
                 .onChange(async (value) => {
                     const num = parseInt(value);
-                    if (!isNaN(num) && num > 100) {
+                    if (!isNaN(num) && num >= 240) {
                         await this.plugin.settingsManager.updateSettings({ cardMaxHeight: num });
                     }
                 })
@@ -154,7 +154,7 @@ export class RedSettingTab extends PluginSettingTab {
                     const recommended = getRecommendedHeight();
                     await this.plugin.settingsManager.updateSettings({ cardMaxHeight: recommended });
                     maxHeightText?.setValue(String(recommended));
-                    maxHeightSetting.setDesc(`超过此高度的内容将被拆分到下一页。当前推荐 ${recommended} px`);
+                    maxHeightSetting.setDesc(`数值越大，每页内容越多、总页数越少。当前推荐 ${recommended} px`);
                 })
         );
 

@@ -66,7 +66,7 @@ export class ThemePreviewModal extends Modal {
         const content = previewContainer.createDiv('red-preview-content');
 
         // 标题样式
-        content.createEl('h2', { text: '探索夜半插件的无限可能' });
+        content.createEl('h2', { text: '探索库森插件的无限可能' });
 
         // 段落样式
         const paragraph1 = content.createEl('p');
@@ -90,12 +90,12 @@ export class ThemePreviewModal extends Modal {
         ['red', 'yellow', 'green'].forEach(color => {
             dots.createSpan({ cls: `red-code-dot red-code-dot-${color}` });
         });
-        codeBlock.createEl('code', { text: 'console.log("欢迎使用夜半插件！");' });
+        codeBlock.createEl('code', { text: 'console.log("欢迎使用库森插件！");' });
 
         // 分隔线样式
         content.createEl('hr');
 
-        content.createEl('strong', { text: '如果您觉得我的插件对您有帮助，请打赏支持我。' });
+        content.createEl('strong', { text: '如果这个插件对您有帮助，欢迎分享给更多朋友。' });
 
         // 页脚区域
         const footer = previewContainer.createDiv('red-preview-footer');

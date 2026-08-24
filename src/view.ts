@@ -19,11 +19,6 @@ export class RedView extends ItemView {
     private isPreviewLocked: boolean = false;
     private currentImageIndex: number = 0;
     private backgroundManager: BackgroundManager;
-    // 添加捐赠提醒相关属性
-    private donateCount: number = 0;
-    private lastDonatePrompt: number = 0;
-    private MAX_COUNT_BEFORE_PROMPT: number = 5; // 每使用5次提醒一次
-
     // UI 元素
     private lockButton: HTMLButtonElement;
     private copyButton: HTMLButtonElement;
@@ -58,11 +53,6 @@ export class RedView extends ItemView {
             this.updatePreview.bind(this),
             this.themeManager
         );
-
-        // 从设置中恢复捐赠计数和上次提示时间
-        const settings = this.settingsManager.getSettings();
-        this.donateCount = settings.donateCount || 0;
-        this.lastDonatePrompt = settings.lastDonatePrompt || 0;
     }
 
     getViewType() {
@@ -244,7 +234,8 @@ export class RedView extends ItemView {
     }
 
     private isTextSplittableElement(element: HTMLElement): boolean {
-        return ['P', 'LI', 'BLOCKQUOTE'].includes(element.tagName);
+        return ['P', 'LI', 'BLOCKQUOTE'].includes(element.tagName)
+            && !element.querySelector('img, video, audio, table, pre, code');
     }
 
     private cloneElementWithText(element: HTMLElement, text: string): HTMLElement {
@@ -261,17 +252,89 @@ export class RedView extends ItemView {
         return clone;
     }
 
-    private measureElementHeight(measureDiv: HTMLElement, element: HTMLElement): number {
-        measureDiv.innerHTML = '';
-        const clone = element.cloneNode(true) as HTMLElement;
-        clone.style.display = 'block';
-        measureDiv.appendChild(clone);
-        return Math.max(clone.scrollHeight, 20);
+    private measurePageHeight(
+        measureContainer: HTMLElement,
+        elements: HTMLElement[],
+        heading?: HTMLElement
+    ): number {
+        measureContainer.innerHTML = '';
+        const section = document.createElement('section');
+        section.className = 'red-content-section red-section-active';
+        section.style.display = 'block';
+
+        if (heading) section.appendChild(heading.cloneNode(true));
+        elements.forEach(element => section.appendChild(element.cloneNode(true)));
+        measureContainer.appendChild(section);
+        return Math.max(section.scrollHeight, Math.ceil(section.getBoundingClientRect().height), 20);
+    }
+
+    private measureElementHeight(measureContainer: HTMLElement, element: HTMLElement): number {
+        return this.measurePageHeight(measureContainer, [element]);
+    }
+
+    private createPaginationMeasureHost(
+        imagePreview: HTMLElement,
+        contentContainer: HTMLElement
+    ): { root: HTMLElement; container: HTMLElement } {
+        const root = imagePreview.cloneNode(false) as HTMLElement;
+        const content = imagePreview.querySelector<HTMLElement>('.red-preview-content')?.cloneNode(false) as HTMLElement
+            || document.createElement('div');
+        const container = contentContainer.cloneNode(false) as HTMLElement;
+        const previewWidth = Math.ceil(imagePreview.getBoundingClientRect().width || imagePreview.clientWidth || 490);
+
+        root.style.cssText += `;position:fixed;left:-10000px;top:0;visibility:hidden;pointer-events:none;display:block;width:${previewWidth}px;max-width:none;height:auto;min-height:0;aspect-ratio:auto;overflow:visible;box-sizing:border-box;`;
+        content.style.display = 'block';
+        container.style.display = 'block';
+        content.appendChild(container);
+        root.appendChild(content);
+        document.body.appendChild(root);
+
+        return { root, container };
+    }
+
+    private async waitForPaginationImages(container: HTMLElement): Promise<void> {
+        const pendingImages = Array.from(container.querySelectorAll<HTMLImageElement>('img'))
+            .filter(image => !image.complete || image.naturalWidth === 0);
+
+        await Promise.all(pendingImages.map(image => new Promise<void>(resolve => {
+            const finish = () => resolve();
+            image.addEventListener('load', finish, { once: true });
+            image.addEventListener('error', finish, { once: true });
+            window.setTimeout(finish, 2000);
+        })));
+    }
+
+    private fitMediaElement(
+        element: HTMLElement,
+        availableHeight: number,
+        measureContainer: HTMLElement
+    ): HTMLElement | null {
+        if (availableHeight < 180) return null;
+
+        const fitted = element.cloneNode(true) as HTMLElement;
+        const mediaElements: HTMLElement[] = [];
+        if (fitted.matches('img, video')) mediaElements.push(fitted);
+        mediaElements.push(...Array.from(fitted.querySelectorAll<HTMLElement>('img, video')));
+        if (mediaElements.length === 0) return null;
+
+        const mediaMaxHeight = Math.max(140, availableHeight - 36);
+        mediaElements.forEach(media => {
+            media.style.setProperty('max-height', `${mediaMaxHeight}px`, 'important');
+            media.style.setProperty('width', 'auto', 'important');
+            media.style.setProperty('max-width', '100%', 'important');
+            media.style.setProperty('object-fit', 'contain', 'important');
+            media.style.setProperty('margin-left', 'auto', 'important');
+            media.style.setProperty('margin-right', 'auto', 'important');
+        });
+
+        return this.measureElementHeight(measureContainer, fitted) <= availableHeight
+            ? fitted
+            : null;
     }
 
     private splitOversizedTextElement(
         element: HTMLElement,
-        measureDiv: HTMLElement,
+        measureContainer: HTMLElement,
         availableHeight: number
     ): HTMLElement[] {
         const text = element.textContent?.trim();
@@ -279,7 +342,7 @@ export class RedView extends ItemView {
             return [element];
         }
 
-        const originalHeight = this.measureElementHeight(measureDiv, element);
+        const originalHeight = this.measureElementHeight(measureContainer, element);
         if (originalHeight <= availableHeight) {
             return [element];
         }
@@ -303,23 +366,32 @@ export class RedView extends ItemView {
         if (!container) return;
 
         const imagePreview = this.previewEl.querySelector<HTMLElement>('.red-image-preview');
-        const cardWidth = imagePreview?.offsetWidth || 375;
+        if (!imagePreview) return;
+        await this.waitForPaginationImages(container);
 
-        const measureDiv = document.createElement('div');
-        measureDiv.style.cssText = `position:absolute;left:-9999px;top:-9999px;visibility:hidden;width:${cardWidth}px;`;
-        document.body.appendChild(measureDiv);
+        const previewStyle = getComputedStyle(imagePreview);
+        const headerHeight = imagePreview.querySelector<HTMLElement>('.red-preview-header')?.offsetHeight || 0;
+        const footerHeight = imagePreview.querySelector<HTMLElement>('.red-preview-footer')?.offsetHeight || 0;
+        const verticalPadding = parseFloat(previewStyle.paddingTop || '0')
+            + parseFloat(previewStyle.paddingBottom || '0');
+        const actualContentCapacity = Math.max(
+            300,
+            Math.floor(imagePreview.clientHeight - headerHeight - footerHeight - verticalPadding - 16)
+        );
+        const pageHeightLimit = Math.min(maxHeight, actualContentCapacity);
+        const measureHost = this.createPaginationMeasureHost(imagePreview, container);
+        const measureContainer = measureHost.container;
 
         try {
             const sections = Array.from(container.querySelectorAll<HTMLElement>('.red-content-section'));
 
             for (const section of sections) {
-                const clone = section.cloneNode(true) as HTMLElement;
-                clone.style.cssText = 'display:block;';
-                measureDiv.innerHTML = '';
-                measureDiv.appendChild(clone);
-                const sectionHeight = clone.scrollHeight;
+                const sectionHeight = this.measurePageHeight(
+                    measureContainer,
+                    Array.from(section.children) as HTMLElement[]
+                );
 
-                if (sectionHeight <= maxHeight) continue;
+                if (sectionHeight <= pageHeightLimit) continue;
 
                 const children = Array.from(section.children) as HTMLElement[];
                 const headingEl = children.find(el => /^H[1-6]$/.test(el.tagName));
@@ -327,35 +399,67 @@ export class RedView extends ItemView {
                     ? children.filter(el => el !== headingEl)
                     : children;
 
-                measureDiv.innerHTML = '';
-                let headingHeight = 0;
-
-                if (headingEl) {
-                    const headingClone = headingEl.cloneNode(true) as HTMLElement;
-                    headingClone.style.display = 'block';
-                    measureDiv.appendChild(headingClone);
-                    headingHeight = headingClone.scrollHeight;
-                }
-
                 const pages: HTMLElement[][] = [[]];
-                let currentHeight = headingHeight;
 
                 for (const el of contentEls) {
-                    const pageIndex = pages.length - 1;
-                    const pageHeadingHeight = headingEl && shouldRenderSplitHeading(pageIndex) ? headingHeight : 0;
-                    const availableHeight = Math.max(40, maxHeight - pageHeadingHeight);
-                    const splitEls = this.splitOversizedTextElement(el, measureDiv, availableHeight);
+                    const firstPageHeadingHeight = headingEl
+                        ? this.measurePageHeight(measureContainer, [], headingEl)
+                        : 0;
+                    const availableHeight = Math.max(80, pageHeightLimit - firstPageHeadingHeight);
+                    const splitEls = this.splitOversizedTextElement(el, measureContainer, availableHeight);
 
                     for (const splitEl of splitEls) {
-                        const elHeight = this.measureElementHeight(measureDiv, splitEl);
+                        const pageIndex = pages.length - 1;
+                        const currentPage = pages[pageIndex];
+                        const pageHeading = headingEl && shouldRenderSplitHeading(pageIndex)
+                            ? headingEl
+                            : undefined;
+                        const candidateHeight = this.measurePageHeight(
+                            measureContainer,
+                            [...currentPage, splitEl],
+                            pageHeading
+                        );
 
-                        if (currentHeight + elHeight > maxHeight && pages[pages.length - 1].length > 0) {
-                            pages.push([]);
-                            currentHeight = headingEl && shouldRenderSplitHeading(pages.length - 1) ? headingHeight : 0;
+                        if (candidateHeight <= pageHeightLimit) {
+                            currentPage.push(splitEl);
+                            continue;
                         }
 
-                        pages[pages.length - 1].push(splitEl);
-                        currentHeight += elHeight;
+                        if (currentPage.length > 0) {
+                            const usedHeight = this.measurePageHeight(
+                                measureContainer,
+                                currentPage,
+                                pageHeading
+                            );
+                            const fitted = this.fitMediaElement(
+                                splitEl,
+                                pageHeightLimit - usedHeight,
+                                measureContainer
+                            );
+                            if (fitted && this.measurePageHeight(
+                                measureContainer,
+                                [...currentPage, fitted],
+                                pageHeading
+                            ) <= pageHeightLimit) {
+                                currentPage.push(fitted);
+                                continue;
+                            }
+
+                            pages.push([]);
+                        }
+
+                        const newPageIndex = pages.length - 1;
+                        const newPageHeading = headingEl && shouldRenderSplitHeading(newPageIndex)
+                            ? headingEl
+                            : undefined;
+                        const fittedForFullPage = this.fitMediaElement(
+                            splitEl,
+                            pageHeightLimit - (newPageHeading
+                                ? this.measurePageHeight(measureContainer, [], newPageHeading)
+                                : 0),
+                            measureContainer
+                        );
+                        pages[newPageIndex].push(fittedForFullPage || splitEl);
                     }
                 }
 
@@ -382,7 +486,7 @@ export class RedView extends ItemView {
                 section.setAttribute('data-index', idx.toString());
             });
         } finally {
-            document.body.removeChild(measureDiv);
+            measureHost.root.remove();
         }
     }
 
@@ -551,7 +655,8 @@ export class RedView extends ItemView {
                 5. 批量操作：保持统一字号时，用【导出全部页】批量生成
                 6. 模板切换：顶部选择器可切换不同视觉风格
                 7. 实时编辑：解锁状态(🔓)下编辑文档即时预览效果
-                8. 支持创作：点击❤️关于作者可进行打赏支持`
+                8. 动图导出：当前页含 GIF 时会自动导出动态 GIF，普通页面仍为 PNG
+                9. 关于插件：点击「关于作者」查看库森的介绍与联系方式`
         });
     }
 
@@ -576,17 +681,12 @@ export class RedView extends ItemView {
 
         singleDownloadButton.addEventListener('click', async () => {
             if (this.previewEl) {
-                // 检查是否需要显示捐赠弹窗
-                if (this.shouldShowDonatePrompt()) {
-                    DonateManager.showDonateModal(this.containerEl);
-                }
-
                 singleDownloadButton.disabled = true;
                 singleDownloadButton.setText('导出中...');
 
                 try {
-                    await DownloadManager.downloadSingleImage(this.previewEl);
-                    singleDownloadButton.setText('导出成功');
+                    const saved = await DownloadManager.downloadSingleImage(this.previewEl);
+                    singleDownloadButton.setText(saved ? '导出成功' : '已取消');
                 } catch (error) {
                     singleDownloadButton.setText('导出失败');
                 } finally {
@@ -606,20 +706,15 @@ export class RedView extends ItemView {
 
         this.copyButton.addEventListener('click', async () => {
             if (this.previewEl) {
-                // 检查是否需要显示捐赠弹窗
-                if (this.shouldShowDonatePrompt()) {
-                    DonateManager.showDonateModal(this.containerEl);
-                }
-
                 this.copyButton.disabled = true;
                 this.copyButton.setText('导出中...');
 
                 try {
                     const dlSettings = this.settingsManager.getSettings();
-                    await DownloadManager.downloadAllImages(this.previewEl, {
+                    const saved = await DownloadManager.downloadAllImages(this.previewEl, {
                         showHeaderOnFirstOnly: dlSettings.userInfoMode === 'first-only'
                     });
-                    this.copyButton.setText('导出成功');
+                    this.copyButton.setText(saved ? '导出成功' : '已取消');
                 } catch (error) {
                     this.copyButton.setText('导出失败');
                 } finally {
@@ -639,11 +734,6 @@ export class RedView extends ItemView {
                 copyButton.addEventListener('click', async () => {
                     copyButton.disabled = true;
                     try {
-                        // 检查是否需要显示捐赠弹窗
-                        if (this.shouldShowDonatePrompt()) {
-                            DonateManager.showDonateModal(this.containerEl);
-                        }
-
                         await ClipboardManager.copyImageToClipboard(this.previewEl);
                         new Notice('图片已复制到剪贴板');
                     } catch (error) {
@@ -932,38 +1022,4 @@ export class RedView extends ItemView {
         return this.settingsManager.getFontOptions();
     }
     // #endregion
-
-
-    // 检查是否需要显示捐赠弹窗
-    private shouldShowDonatePrompt(): boolean {
-        // 增加使用次数
-        this.donateCount++;
-
-        // 保存到设置中
-        if (this.settingsManager) {
-            const settings = this.settingsManager.getSettings();
-            settings.donateCount = this.donateCount;
-            this.settingsManager.updateSettings(settings);
-        }
-
-        const now = Date.now();
-        const oneDayInMs = 24 * 60 * 60 * 1000; // 一天的毫秒数
-
-        // 如果使用次数达到阈值且24小时内未显示过
-        if (this.donateCount % this.MAX_COUNT_BEFORE_PROMPT === 0 && now - this.lastDonatePrompt > oneDayInMs) {
-            // 更新上次显示时间
-            this.lastDonatePrompt = now;
-
-            // 保存到设置中
-            if (this.settingsManager) {
-                const settings = this.settingsManager.getSettings();
-                settings.lastDonatePrompt = this.lastDonatePrompt;
-                this.settingsManager.updateSettings(settings);
-            }
-
-            return true;
-        }
-
-        return false;
-    }
 }

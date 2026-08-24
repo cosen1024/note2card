@@ -33,6 +33,10 @@ const config = {
         ...builtins],
     format: 'cjs',
     target: 'es2018',
+    loader: {
+        '.jpg': 'dataurl',
+        '.jpeg': 'dataurl'
+    },
     logLevel: "info",
     sourcemap: prod ? false : 'inline',
     treeShaking: true,

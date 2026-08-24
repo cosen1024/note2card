@@ -34,10 +34,26 @@ const converterSource = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'converter.ts'),
   'utf8'
 );
+const viewSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'view.ts'), 'utf8');
 assert.match(
   converterSource,
   /paginationMode\s*===\s*'continuous'/,
   'converter should support continuous pagination without headings'
+);
+assert.match(
+  viewSource,
+  /createPaginationMeasureHost/,
+  'pagination should measure content inside the real card layout'
+);
+assert.match(
+  viewSource,
+  /fitMediaElement/,
+  'oversized images and GIFs should be fitted instead of creating mostly empty pages'
+);
+assert.match(
+  settingsSource,
+  /hasLegacyCardHeight/,
+  'legacy low page-height values should migrate to the new recommendation'
 );
 
 const paginationModule = loadTsModule(path.join('src', 'paginationRecommendations.ts'));
@@ -48,8 +64,8 @@ assert.strictEqual(
     fontSize: 16,
     hasAvatar: false
   }),
-  400,
-  'default 16 without avatar should recommend 400'
+  520,
+  'default 16 without avatar should recommend 520'
 );
 
 assert.strictEqual(
@@ -58,8 +74,8 @@ assert.strictEqual(
     fontSize: 15,
     hasAvatar: false
   }),
-  360,
-  'SimSun 15 without avatar should recommend 360'
+  520,
+  'SimSun 15 without avatar should recommend 520'
 );
 
 assert.strictEqual(
@@ -68,8 +84,8 @@ assert.strictEqual(
     fontSize: 16,
     hasAvatar: true
   }),
-  370,
-  'SimSun 16 with avatar should add 40'
+  460,
+  'SimSun 16 with avatar should reserve 40 pixels for the header'
 );
 
 assert.strictEqual(
@@ -78,8 +94,8 @@ assert.strictEqual(
     fontSize: 16,
     hasAvatar: true
   }),
-  440,
-  'default-family recommendation should add 40 when avatar is shown'
+  480,
+  'default-family recommendation should reserve 40 pixels when avatar is shown'
 );
 
 console.log('pagination behavior assertions passed');

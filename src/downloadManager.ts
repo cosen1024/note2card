@@ -1,6 +1,9 @@
 import * as htmlToImage from 'html-to-image';
 import JSZip from 'jszip';
+import { Notice } from 'obsidian';
+import * as path from 'path';
 import { withInlinedRemoteResources } from './exportResourceInliner';
+import { exportAnimatedGifIfPresent } from './animatedGifExporter';
 
 export class DownloadManager {
     // 添加共用的导出配置方法
@@ -18,10 +21,105 @@ export class DownloadManager {
         };
     }
 
+    private static async createPngBlob(imageElement: HTMLElement): Promise<Blob> {
+        try {
+            const blob = await withInlinedRemoteResources(imageElement, () =>
+                htmlToImage.toBlob(imageElement, this.getExportConfig(imageElement))
+            );
+            if (!(blob instanceof Blob)) {
+                throw new Error('生成的不是有效的 Blob 对象');
+            }
+            return blob;
+        } catch (error) {
+            console.warn('PNG 直接导出失败，尝试 Canvas 备用方法', error);
+            const canvas = await withInlinedRemoteResources(imageElement, () =>
+                htmlToImage.toCanvas(imageElement, this.getExportConfig(imageElement))
+            );
+
+            return new Promise<Blob>((resolve, reject) => {
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                    } else {
+                        reject(new Error('Canvas 转换为 Blob 失败'));
+                    }
+                }, 'image/png', 1);
+            });
+        }
+    }
+
+    private static async createCardBlob(
+        imageElement: HTMLElement
+    ): Promise<{ blob: Blob; extension: 'gif' | 'png' }> {
+        try {
+            const gifBlob = await exportAnimatedGifIfPresent(
+                imageElement,
+                this.getExportConfig(imageElement)
+            );
+            if (gifBlob) return { blob: gifBlob, extension: 'gif' };
+        } catch (error) {
+            console.warn('动态 GIF 导出失败，将回退为 PNG', error);
+        }
+
+        return {
+            blob: await this.createPngBlob(imageElement),
+            extension: 'png'
+        };
+    }
+
+    private static async saveBlob(
+        blob: Blob,
+        fileName: string,
+        extension: 'gif' | 'png' | 'zip'
+    ): Promise<boolean> {
+        try {
+            const { remote } = require('electron');
+            let targetPath: string;
+            if (remote?.dialog?.showSaveDialog) {
+                const result = await remote.dialog.showSaveDialog({
+                    title: '保存 Note to Card 导出文件',
+                    defaultPath: path.join(remote.app.getPath('downloads'), fileName),
+                    filters: [{
+                        name: extension === 'zip' ? 'ZIP 压缩包' : `${extension.toUpperCase()} 图片`,
+                        extensions: [extension]
+                    }],
+                    properties: ['createDirectory', 'showOverwriteConfirmation']
+                });
+
+                if (result.canceled || !result.filePath) return false;
+                targetPath = result.filePath;
+            } else {
+                // 新版 Electron 可能禁用 remote；此时直接落盘到系统下载目录。
+                const os = require('os');
+                targetPath = path.join(os.homedir(), 'Downloads', fileName);
+            }
+
+            const fs = require('fs').promises;
+            const bytes = Buffer.from(await blob.arrayBuffer());
+            await fs.writeFile(targetPath, bytes);
+            new Notice(`已保存到：${targetPath}`, 5000);
+            return true;
+        } catch (nativeSaveError) {
+            console.warn('原生保存不可用，回退到浏览器下载', nativeSaveError);
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // 大 GIF 需要保留 Blob URL，直到浏览器真正接管下载。
+            window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+            new Notice(`已触发下载：${fileName}`, 4000);
+            return true;
+        }
+    }
+
     static async downloadAllImages(
         element: HTMLElement,
         options?: { showHeaderOnFirstOnly?: boolean }
-    ): Promise<void> {
+    ): Promise<boolean> {
         try {
             const zip = new JSZip();
             const previewContainer = element.querySelector('.red-preview-container');
@@ -31,6 +129,7 @@ export class DownloadManager {
 
             const sections = previewContainer.querySelectorAll<HTMLElement>('.red-content-section');
             const totalSections = sections.length;
+            let exportedCount = 0;
 
             const originalVisibility = Array.from(sections).map(section => ({
                 active: section.classList.contains(ACTIVE_CLASS),
@@ -64,33 +163,11 @@ export class DownloadManager {
                 const imageElement = element.querySelector<HTMLElement>('.red-image-preview')!;
 
                 try {
-                    const blob = await withInlinedRemoteResources(imageElement, () =>
-                        htmlToImage.toBlob(imageElement, this.getExportConfig(imageElement))
-                    );
-                    if (blob instanceof Blob) {
-                        zip.file(`小红书笔记_第${i + 1}页.png`, blob);
-                    } else {
-                        throw new Error('生成的不是有效的 Blob 对象');
-                    }
-                } catch (err) {
-                    console.warn(`第${i + 1}页导出失败，尝试备用方法`, err);
-                    try {
-                        const canvas = await withInlinedRemoteResources(imageElement, () =>
-                            htmlToImage.toCanvas(imageElement, this.getExportConfig(imageElement))
-                        );
-                        const blob = await new Promise<Blob>((resolve, reject) => {
-                            canvas.toBlob((b) => {
-                                if (b) {
-                                    resolve(b);
-                                } else {
-                                    reject(new Error('Canvas 转换为 Blob 失败'));
-                                }
-                            }, 'image/png', 1);
-                        });
-                        zip.file(`小红书笔记_第${i + 1}页.png`, blob);
-                    } catch (canvasErr) {
-                        console.error(`第${i + 1}页备用导出也失败`, canvasErr);
-                    }
+                    const exported = await this.createCardBlob(imageElement);
+                    zip.file(`小红书笔记_第${i + 1}页.${exported.extension}`, exported.blob);
+                    exportedCount++;
+                } catch (exportError) {
+                    console.error(`第${i + 1}页导出失败`, exportError);
                 }
             }
 
@@ -106,6 +183,10 @@ export class DownloadManager {
                 pageNumberEl.textContent = originalPageNumberText;
             }
 
+            if (exportedCount === 0) {
+                throw new Error('所有页面均导出失败，未生成压缩包');
+            }
+
             // 创建下载
             const content = await zip.generateAsync({
                 type: "blob",
@@ -119,21 +200,18 @@ export class DownloadManager {
                 throw new Error('生成的压缩文件不是有效的 Blob 对象');
             }
 
-            const url = URL.createObjectURL(content);
-            const link = Object.assign(document.createElement('a'), {
-                href: url,
-                download: `小红书笔记_${Date.now()}.zip`
-            });
-
-            link.click();
-            URL.revokeObjectURL(url);
+            return await this.saveBlob(
+                content,
+                `小红书笔记_${Date.now()}.zip`,
+                'zip'
+            );
         } catch (error) {
             console.error('导出图片失败:', error);
             throw error;
         }
     }
 
-    static async downloadSingleImage(element: HTMLElement): Promise<void> {
+    static async downloadSingleImage(element: HTMLElement): Promise<boolean> {
         try {
             const imageElement = element.querySelector('.red-image-preview') as HTMLElement;
             if (!imageElement) {
@@ -143,44 +221,12 @@ export class DownloadManager {
             // 确保浏览器完成重绘并等待资源加载
             await new Promise(resolve => setTimeout(resolve, 300));
 
-            try {
-                // 使用 html-to-image 替代 dom-to-image
-                const blob = await withInlinedRemoteResources(imageElement, () =>
-                    htmlToImage.toBlob(imageElement, this.getExportConfig(imageElement))
-                );
-
-                // 创建下载链接并触发下载
-                if (!blob) throw new Error('Blob 对象为空');
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `小红书笔记_${new Date().getTime()}.png`;
-
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-            } catch (err) {
-                console.warn('导出失败，尝试备用方法', err);
-                // 备用方法：使用 toCanvas 然后转换为 blob
-                const canvas = await withInlinedRemoteResources(imageElement, () =>
-                    htmlToImage.toCanvas(imageElement, this.getExportConfig(imageElement))
-                );
-                canvas.toBlob((blob) => {
-                    if (!blob) {
-                        throw new Error('Canvas 转换为 Blob 失败');
-                    }
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = `小红书笔记_${new Date().getTime()}.png`;
-
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(url);
-                }, 'image/png', 1);
-            }
+            const exported = await this.createCardBlob(imageElement);
+            return await this.saveBlob(
+                exported.blob,
+                `小红书笔记_${new Date().getTime()}.${exported.extension}`,
+                exported.extension
+            );
         } catch (error) {
             console.error('导出图片失败:', error);
             throw error;

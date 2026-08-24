@@ -4,6 +4,6 @@
     "version": "1.0.0",
     "minAppVersion": "0.15.0",
     "description": "将 Markdown 笔记导出为精美图片卡片",
-    "author": "Yeban",
+    "author": "库森",
     "isDesktopOnly": true
 }

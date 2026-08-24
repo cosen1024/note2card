@@ -13,7 +13,7 @@
     "plugin",
     "xiaohongshu"
   ],
-  "author": "",
+  "author": "库森",
   "license": "MIT",
   "devDependencies": {
     "@types/dom-to-image": "^2.6.7",
@@ -31,6 +31,7 @@
     "dom-to-image": "^2.6.0",
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "modern-gif": "^2.1.0"
   }
 }

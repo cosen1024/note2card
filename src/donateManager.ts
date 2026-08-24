@@ -1,7 +1,6 @@
 
 import { App, Plugin } from 'obsidian';
-import { DONATE_QR_BASE64 } from './assets/donateQR';
-import { MP_QR_BASE64 } from './assets/mpQR';
+import KUSEN_WECHAT_QR from './assets/kusen-wechat.jpg';
 
 export class DonateManager {
     private static overlay: HTMLElement;
@@ -16,132 +15,109 @@ export class DonateManager {
 
     public static showDonateModal(container: HTMLElement) {
         this.overlay = container.createEl('div', {
-            cls: 'mp-donate-overlay'
+            cls: 'red-about-overlay'
         });
 
         this.modal = this.overlay.createEl('div', {
-            cls: 'mp-about-modal'
+            cls: 'red-about-modal'
         });
 
         // 添加关闭按钮
         const closeButton = this.modal.createEl('button', {
-            cls: 'mp-donate-close',
+            cls: 'red-about-close',
             text: '×'
         });
 
         // 添加作者信息区域
         const authorSection = this.modal.createEl('div', {
-            cls: 'mp-about-section mp-about-intro-section'
+            cls: 'red-about-section red-about-intro-section'
         });
 
         authorSection.createEl('h4', {
             text: '关于作者',
-            cls: 'mp-about-title'
+            cls: 'red-about-title'
         });
 
         const introEl = authorSection.createEl('p', {
-            cls: 'mp-about-intro'
+            cls: 'red-about-intro'
         });
         
         introEl.appendText('你好，我是');
         introEl.createEl('span', {
-            cls: 'mp-about-name',
-            text: '【夜半】'
+            cls: 'red-about-name',
+            text: '【库森】'
         });
         introEl.appendText('，一名');
         introEl.createEl('span', {
-            cls: 'mp-about-identity',
-            text: '全职写作与独立开发者'
+            cls: 'red-about-identity',
+            text: 'AI 工具创作者与独立开发者'
         });
         introEl.appendText('。');
         
         const roleList = authorSection.createEl('div', {
-            cls: 'mp-about-roles'
+            cls: 'red-about-roles'
         });
 
         const roleEl = roleList.createEl('p', {
-            cls: 'mp-about-role'
+            cls: 'red-about-role'
         });
         
-        roleEl.appendText('这款插件是我为了在 Obsidian 写作后，');
+        roleEl.appendText('我持续打磨这款插件，希望你在 Obsidian 写作后，');
         roleEl.createEl('br');
         roleEl.appendText('无需繁琐排版一键即可发布到小红书而开发的工具，');
         roleEl.createEl('br');
         roleEl.appendText('希望能让你的');
         roleEl.createEl('span', {
-            cls: 'mp-about-highlight',
+            cls: 'red-about-highlight',
             text: '排版更轻松'
         });
         roleEl.appendText('，让你的');
         roleEl.createEl('span', {
-            cls: 'mp-about-value',
+            cls: 'red-about-value',
             text: '创作更高效'
         });
         roleEl.appendText('。');
 
         // 添加插件介绍
         const descEl = authorSection.createEl('p', {
-            cls: 'mp-about-desc'
+            cls: 'red-about-desc'
         });
-        descEl.appendText('如果这款插件对你有帮助，');
+        descEl.appendText('聚焦 AI、科研效率与内容创作工具，');
         descEl.createEl('br');
-        descEl.appendText('或者你愿意支持我的独立开发与写作，欢迎请我喝咖啡☕️。');
-        descEl.createEl('br');
-        descEl.appendText('你的支持对我来说意义重大，它能让我更专注地开发、写作。');
+        descEl.appendText('让复杂工作流变得更简单、更可靠。');
 
-        // 添加打赏区域
-        const donateSection = this.modal.createEl('div', {
-            cls: 'mp-about-section mp-about-donate-section'
+        const wechatSection = this.modal.createEl('div', {
+            cls: 'red-about-section red-about-mp-section'
         });
 
-        donateSection.createEl('h4', {
-            text: '请我喝咖啡',
-            cls: 'mp-about-subtitle'
+        const wechatDesc = wechatSection.createEl('p', {
+            cls: 'red-about-desc'
+        });
+        wechatDesc.appendText('如果你想交流 AI 工具、科研效率或内容创作，');
+        wechatDesc.createEl('br');
+        wechatDesc.appendText('欢迎扫码添加我的微信，请备注「Note to Card」。');
+
+        wechatSection.createEl('h4', {
+            text: '添加我的微信',
+            cls: 'red-about-subtitle'
         });
 
-        const donateQR = donateSection.createEl('div', {
-            cls: 'mp-about-qr'
+        const wechatQR = wechatSection.createEl('div', {
+            cls: 'red-about-qr red-about-wechat-qr'
         });
-        donateQR.createEl('img', {
+        wechatQR.createEl('img', {
             attr: {
-                src: DONATE_QR_BASE64,
-                alt: '打赏二维码'
+                src: KUSEN_WECHAT_QR,
+                alt: '库森微信二维码'
             }
         });
 
-        // 添加公众号区域
-        const mpSection = this.modal.createEl('div', {
-            cls: 'mp-about-section mp-about-mp-section'
+        const footerEl = wechatSection.createEl('p', {
+            cls: 'red-about-footer'
         });
-
-        const mpDescEl = mpSection.createEl('p', {
-            cls: 'mp-about-desc'
-        });
-        mpDescEl.appendText('如果你想了解更多关于创作、效率工具的小技巧，');
-        mpDescEl.createEl('br');
-        mpDescEl.appendText('或者关注我未来的写作动态，欢迎关注我的微信公众号。');
-
-        mpSection.createEl('h4', {
-            text: '微信公众号',
-            cls: 'mp-about-subtitle'
-        });
-
-        const mpQR = mpSection.createEl('div', {
-            cls: 'mp-about-qr'
-        });
-        mpQR.createEl('img', {
-            attr: {
-                src: MP_QR_BASE64,
-                alt: '公众号二维码'
-            }
-        });
-
-        const footerEl = mpSection.createEl('p', {
-            cls: 'mp-about-footer'
-        });
-        footerEl.appendText('期待与你一起，在创作的世界里');
+        footerEl.appendText('期待与你一起，把想法变成');
         footerEl.createEl('strong', {
-            text: '找到属于自己的意义'
+            text: '真正好用的工具'
         });
         footerEl.appendText('。');
 

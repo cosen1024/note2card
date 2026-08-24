@@ -54,9 +54,9 @@ export const DEFAULT_SETTINGS: RedSettings = {
     customThemes: [],
     // 修改默认用户信息
     userAvatar: '',  // 默认为空，提示用户上传
-    userName: '夜半',
+    userName: '库森',
     notesTitle: '备忘录',
-    userId: '@Yeban',
+    userId: '@库森',
     showTime: true,
     userInfoMode: 'all',
     timeFormat: 'zh-CN',
@@ -69,8 +69,8 @@ export const DEFAULT_SETTINGS: RedSettings = {
         hasAvatar: false
     }),
     showPageNumber: false,
-    footerLeftText: '夜半过后，光明便启程',
-    footerRightText: '欢迎关注公众号：夜半',
+    footerLeftText: '库森｜AI 工具与效率实践',
+    footerRightText: '持续分享 AI 与创作工具',
     customFonts: [
         {
             value: 'Optima-Regular, Optima, PingFangSC-light, PingFangTC-light, "PingFang SC", Cambria, Cochin, Georgia, Times, "Times New Roman", serif',
@@ -117,10 +117,29 @@ export class SettingsManager extends EventEmitter {
 
     async loadSettings() {
         let savedData = await this.plugin.loadData();
+        let didMigrate = false;
 
         // 确保 savedData 是一个对象
         if (!savedData) {
             savedData = {};
+        }
+
+        // 将未修改过的旧作者默认值迁移为当前维护者信息。
+        if (savedData.userName === '夜半') {
+            savedData.userName = '库森';
+            didMigrate = true;
+        }
+        if (savedData.userId === '@Yeban') {
+            savedData.userId = '@库森';
+            didMigrate = true;
+        }
+        if (savedData.footerLeftText === '夜半过后，光明便启程') {
+            savedData.footerLeftText = '库森｜AI 工具与效率实践';
+            didMigrate = true;
+        }
+        if (savedData.footerRightText === '欢迎关注公众号：夜半') {
+            savedData.footerRightText = '持续分享 AI 与创作工具';
+            didMigrate = true;
         }
     
         const { templates } = await import('../templates');
@@ -147,12 +166,21 @@ export class SettingsManager extends EventEmitter {
     
         this.settings = Object.assign({}, DEFAULT_SETTINGS, savedData);
 
-        if (savedData.cardMaxHeight == null) {
+        // 旧版推荐值（330-440px）过小，容易把段落和图片拆成大量空白页。
+        const hasLegacyCardHeight = Number.isFinite(savedData.cardMaxHeight)
+            && savedData.cardMaxHeight >= 180
+            && savedData.cardMaxHeight <= 440;
+        if (savedData.cardMaxHeight == null || hasLegacyCardHeight) {
             this.settings.cardMaxHeight = getRecommendedCardHeight({
                 fontFamily: this.settings.fontFamily,
                 fontSize: this.settings.fontSize,
                 hasAvatar: hasAvatar(this.settings.userAvatar)
             });
+            didMigrate = true;
+        }
+
+        if (didMigrate) {
+            await this.saveSettings();
         }
     }
 

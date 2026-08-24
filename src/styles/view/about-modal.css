@@ -200,3 +200,25 @@
     height: 100%;
     object-fit: contain;
 }
+
+.red-about-wechat-qr {
+    height: min(46vh, 390px);
+    min-height: 260px;
+}
+
+@media (max-width: 600px) {
+    .red-about-modal {
+        width: calc(100vw - 32px);
+        padding: 16px 10px;
+    }
+
+    .red-about-section {
+        margin-left: 8px;
+        margin-right: 8px;
+    }
+
+    .red-about-wechat-qr {
+        height: 330px;
+        min-height: 220px;
+    }
+}

@@ -7,14 +7,14 @@ export interface CardHeightRecommendationOptions {
 }
 
 const BASE_HEIGHT_BY_FAMILY = {
-    song: 330,
-    default: 400
+    song: 500,
+    default: 520
 } as const;
 
 const FONT_SIZE_BASELINE = 16;
-const FONT_SIZE_STEP = 30;
-const AVATAR_HEIGHT_BONUS = 40;
-const MIN_CARD_HEIGHT = 180;
+const FONT_SIZE_STEP = 20;
+const AVATAR_HEIGHT_COST = 40;
+const MIN_CARD_HEIGHT = 300;
 
 function getFontFamilyBucket(fontFamily?: string): keyof typeof BASE_HEIGHT_BY_FAMILY {
     const normalized = (fontFamily || '').toLowerCase();
@@ -34,7 +34,7 @@ export function getRecommendedCardHeight(options: CardHeightRecommendationOption
     const fontSize = Number.isFinite(options.fontSize) ? Number(options.fontSize) : FONT_SIZE_BASELINE;
     const baseHeight = BASE_HEIGHT_BY_FAMILY[getFontFamilyBucket(options.fontFamily)];
     const sizeAdjustment = (FONT_SIZE_BASELINE - fontSize) * FONT_SIZE_STEP;
-    const avatarAdjustment = options.hasAvatar ? AVATAR_HEIGHT_BONUS : 0;
+    const avatarAdjustment = options.hasAvatar ? -AVATAR_HEIGHT_COST : 0;
 
     return Math.max(
         MIN_CARD_HEIGHT,
