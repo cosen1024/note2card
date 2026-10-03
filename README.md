@@ -1,47 +1,77 @@
 # note2card
 
-Obsidian 插件：将 Markdown 笔记排版并导出为小红书风格卡片图片。
+将 Obsidian Markdown 笔记排版为图片卡片，并导出含 GIF、视频素材的动态卡片。
 
-## 功能
+## 来源与致谢
 
-- 按标题拆分卡片，支持 `#` / `##`。
-- 支持手动分页 `---` 和自动按高度分页。
-- 支持单页导出、批量导出 ZIP、复制图片到剪贴板。
-- 卡片包含 GIF 时会智能导出动态 GIF；普通卡片仍导出 PNG。
-- 支持远程图片导出：导出前会把远程图片和远程背景图内联为 data URL，避免预览正常但导出空白。
-- 支持页码、用户信息显示范围、字体字号、主题和背景图设置。
-- 内置多套主题，包括 iPhone 备忘录风格。
+本项目由库森在 **[夜半 Yeban 的 Note to RED](https://github.com/Yeban8090/note-to-red)** 基础上升级维护，不是从零开发。感谢原作者提供标题分组、模板、主题、自定义用户信息和实时预览等基础能力。本项目保留原作者的 [MIT 许可证与版权声明](LICENSE)。
 
-## 本地构建
+Apple 实况资源包的目录结构参考了 [LiveCanvas](https://github.com/pengchujin/livecanvas/blob/main/livecanvas/scripts/package_live_photo.py)。配对与校验使用 macOS 原生能力。
+
+## 库森版的主要升级
+
+- **三种分页方式**：整篇连续、按标题分组、仅按分隔符。标题模式保留标题前的正文；拆页不重复标题。
+- **按实际排版自动分页**：连续和标题模式可开启自动分页；图片放不下时先等比缩小，减少空白页。
+- **动态卡片导出**：GIF 与本地视频可在卡片中同时播放，正文保持静止。支持 GIF，Mac 另支持 MP4 与 Apple 实况资源包；批量导出的静态页仍为 PNG。
+- **更稳定的导出**：导出使用开始时的内容快照；内联远程图片和背景图，跳过隐藏页素材，减少空白导出与视频错误。动态渲染复用排版，只重绘动态区域。
+- **排版与操作优化**：页码固定于卡片底部，可一键关闭；支持仅首页显示用户信息和 iPhone 备忘录风格。底部工具栏按面板宽度换行，预览独立滚动，为 Obsidian 状态栏留出空间；帮助改为点击打开。
+
+## 分页与使用
+
+1. 打开插件设置，选择分页模式。
+2. 选择主题、字号、用户信息与页码显示方式。
+3. 检查预览后，选择格式，点击「下载当前页」或「导出全部页」。批量 ZIP 需先解压。
+
+| 分页模式 | 行为 |
+| --- | --- |
+| 整篇连续分页 | 无须标题；可启用自动分页，`---` 仍作为手动分界 |
+| 按标题分组分页 | 用所选 `#` / `##` 分组，保留开头正文；组内支持 `---` 和自动分页 |
+| 仅按分隔符分页（---） | 只按 Markdown 分隔线拆页，不按标题或高度追加分页 |
+
+分隔符需单独占一行，前后留空行，例如：
+
+```markdown
+第一页正文
+
+---
+
+第二页正文
+```
+
+仅按分隔符或关闭自动分页时，长内容可能超出固定尺寸卡片。请增加分隔符或缩小字号，并检查卡片底部。页码开关位于设置顶部；它不影响预览翻页按钮。
+
+## 导出格式与限制
+
+| 格式 | 用途与限制 |
+| --- | --- |
+| PNG | 静态卡片；支持单页、批量 ZIP、复制到剪贴板 |
+| GIF | 卡片内有动态素材时生成动图；平台可能转为静态，需检查发布结果 |
+| 动态 MP4（Mac） | 5 秒、30fps、宽 1080px、无声，保持卡片比例 |
+| Apple 实况资源包（Mac） | `.pvt.zip` 内含配对 JPEG、MOV 和 `metadata.plist`；不是可直接上传的普通图片 |
+
+动态素材可使用 `![[演示.gif]]`、`![[演示.mp4]]`。短素材循环，长素材截取前 5 秒。本地素材最可靠；跨域视频可能无法读取。Mac 原生导出需要 Apple Command Line Tools；缺少时运行 `xcode-select --install`。不需要 FFmpeg。
+
+实况资源包在生成时检查共享标识、时长和封面时间轨，并通过 Apple PhotoKit 本机加载验证，不写入照片库。此验证不代表 iPhone「文件」、vivo 相册或小红书接受该包；目标设备的导入和发布仍需实测。
+
+用户已在 vivo X200 的小红书中实测 MP4 与普通图片混合发布；不代表所有设备或账号均支持。菜单已移除手机端动画表现不一致的 WebP、未完成设备兼容验证的安卓动态照片，以及未完成端到端验证的直接写入 Mac 照片库入口。相关内部实验代码暂留，不作为公开功能。
+
+## 构建与安装
 
 ```bash
-npm install
+npm ci
 npm run build
 ```
 
-构建后会生成：
-
-- `main.js`
-- `styles.css`
-
-## 安装到 Obsidian
-
-1. 在 Obsidian Vault 中创建目录：`.obsidian/plugins/note-to-card/`
-2. 将 `main.js`、`manifest.json`、`styles.css` 放入该目录
-3. 重启 Obsidian
-4. 在 `设置 -> 第三方插件` 中启用 `Note to Card`
+构建生成 `main.js` 和 `styles.css`。将它们与 `manifest.json` 放入 Vault 的 `.obsidian/plugins/note-to-card/`，重新加载 Obsidian，然后启用 **Note to Card**。本项目插件 ID 与上游 Note to RED 不同；原插件的设置不会自动迁移。
 
 ## 测试
 
 ```bash
-node tests/pagination-splitting.test.js
-node tests/pagination-behavior.test.js
-node tests/export-all-pages.test.js
-node tests/animated-gif-export.test.js
-node tests/page-number-layout.test.js
-node tests/plugin-identity.test.js
+for testfile in tests/*.test.js tests/*.test.cjs; do node "$testfile" || exit 1; done
 ```
+
+浏览器回归脚本位于 `tests/*.browser.cjs` 和 `tests/pane-layout.browser.py`。前者需配置 `PLAYWRIGHT_MODULE`，后者需安装 Python Playwright；均可用 `CHROME_PATH` 指定 Chromium/Chrome。原生校验脚本需 macOS。模拟测试不能替代手机导入、平台发布及 Obsidian 真机界面检查。
 
 ## License
 
-MIT
+MIT。原始版权归夜半 Yeban；库森维护本衍生版本。
