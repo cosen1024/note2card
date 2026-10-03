@@ -47,8 +47,8 @@ assert.match(
 );
 assert.match(
   downloadSource,
-  /动态 GIF 导出失败，将回退为 PNG/,
-  'GIF failures should retain the existing PNG fallback'
+  /throw new Error\(`动态 GIF 导出失败/,
+  'GIF failures must be reported, not silently exported as static PNG'
 );
 assert.match(downloadSource, /showSaveDialog/, 'exports should use a native save dialog');
 assert.match(downloadSource, /writeFile/, 'success should only be reported after writing the file');

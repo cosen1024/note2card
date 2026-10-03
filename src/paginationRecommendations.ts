@@ -1,4 +1,4 @@
-export type PaginationMode = 'continuous' | 'headings';
+export type PaginationMode = 'continuous' | 'headings' | 'separators';
 
 export interface CardHeightRecommendationOptions {
     fontFamily?: string;

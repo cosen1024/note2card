@@ -4,8 +4,31 @@ import { Notice } from 'obsidian';
 import * as path from 'path';
 import { withInlinedRemoteResources } from './exportResourceInliner';
 import { exportAnimatedGifIfPresent } from './animatedGifExporter';
+import { shouldExportNode, exportError } from './exportVisibility';
+import { CardExportFormat, CardResource, exportMotionCard, hasMotion } from './motionCardExporter';
+import { saveCardsToPhotos } from './photosLibrary';
+import { captureExportSnapshot } from './exportSnapshot';
+import { addLivePackage, livePackageInstructions } from './livePhotoPackage';
+
 
 export class DownloadManager {
+    private static exporting = false;
+
+    static async withExportLock(action: () => Promise<void>): Promise<void> {
+        if (this.exporting) { new Notice('已有导出任务，请等待完成'); return; }
+        this.exporting = true;
+        try { await action(); } finally { this.exporting = false; }
+    }
+
+    private static async createResources(root: HTMLElement, format: CardExportFormat, progress: (text: string) => void): Promise<CardResource[]> {
+        if (format === 'live-package' && hasMotion(root)) return exportMotionCard(root, 'live', progress);
+        if ((format === 'mp4' || format === 'live' || format === 'android' || format === 'webp') && hasMotion(root)) return exportMotionCard(root, format, progress);
+        if (format === 'gif') {
+            const result = await this.createCardBlob(root);
+            return [{ name: `card.${result.extension}`, blob: result.blob }];
+        }
+        return [{ name: 'card.png', blob: await this.createPngBlob(root) }];
+    }
     // 添加共用的导出配置方法
     private static getExportConfig(imageElement: HTMLElement) {
         return {
@@ -13,9 +36,7 @@ export class DownloadManager {
             pixelRatio: 4,
             skipFonts: false,
             // 添加过滤器，确保所有元素都被包含
-            filter: (node: Node) => {
-                return true;
-            },
+            filter: shouldExportNode,
             // 处理图片加载错误
             imagePlaceholder: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
         };
@@ -58,7 +79,7 @@ export class DownloadManager {
             );
             if (gifBlob) return { blob: gifBlob, extension: 'gif' };
         } catch (error) {
-            console.warn('动态 GIF 导出失败，将回退为 PNG', error);
+            throw new Error(`动态 GIF 导出失败：${exportError(error).message}。可手动选择 PNG 导出静态卡片。`);
         }
 
         return {
@@ -70,33 +91,33 @@ export class DownloadManager {
     private static async saveBlob(
         blob: Blob,
         fileName: string,
-        extension: 'gif' | 'png' | 'zip'
+        extension: string
     ): Promise<boolean> {
         try {
             const { remote } = require('electron');
-            let targetPath: string;
+            const os = require('os');
+            let targetPath = path.join(os.homedir(), 'Downloads', fileName);
+            let selectedPath = false;
             if (remote?.dialog?.showSaveDialog) {
-                const result = await remote.dialog.showSaveDialog({
+                const options = {
                     title: '保存 Note to Card 导出文件',
                     defaultPath: path.join(remote.app.getPath('downloads'), fileName),
-                    filters: [{
-                        name: extension === 'zip' ? 'ZIP 压缩包' : `${extension.toUpperCase()} 图片`,
-                        extensions: [extension]
-                    }],
+                    filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
                     properties: ['createDirectory', 'showOverwriteConfirmation']
-                });
-
+                };
+                // 绑定当前窗口，防止保存窗口藏在 Obsidian 后面。
+                const owner = remote.getCurrentWindow?.();
+                const result = owner
+                    ? await remote.dialog.showSaveDialog(owner, options)
+                    : await remote.dialog.showSaveDialog(options);
                 if (result.canceled || !result.filePath) return false;
                 targetPath = result.filePath;
-            } else {
-                // 新版 Electron 可能禁用 remote；此时直接落盘到系统下载目录。
-                const os = require('os');
-                targetPath = path.join(os.homedir(), 'Downloads', fileName);
+                selectedPath = true;
             }
 
             const fs = require('fs').promises;
             const bytes = Buffer.from(await blob.arrayBuffer());
-            await fs.writeFile(targetPath, bytes);
+            await fs.writeFile(targetPath, bytes, { flag: selectedPath ? 'w' : 'wx' });
             new Notice(`已保存到：${targetPath}`, 5000);
             return true;
         } catch (nativeSaveError) {
@@ -118,9 +139,13 @@ export class DownloadManager {
 
     static async downloadAllImages(
         element: HTMLElement,
-        options?: { showHeaderOnFirstOnly?: boolean }
+        options?: { showHeaderOnFirstOnly?: boolean; format?: CardExportFormat; progress?: (text: string) => void }
     ): Promise<boolean> {
+        let exportHost: HTMLElement | undefined;
         try {
+            const snapshot = captureExportSnapshot(element);
+            exportHost = snapshot.host;
+            element = snapshot.element;
             const zip = new JSZip();
             const previewContainer = element.querySelector('.red-preview-container');
             if (!previewContainer) throw new Error('找不到预览容器');
@@ -140,6 +165,9 @@ export class DownloadManager {
             const pageNumberEl = element.querySelector<HTMLElement>('.red-page-number');
             const originalPageNumberText = pageNumberEl?.textContent ?? '';
 
+            const failures: number[] = [];
+            const photosPages: CardResource[][] = [];
+            try {
             for (let i = 0; i < totalSections; i++) {
                 sections.forEach((section, sectionIndex) => {
                     section.classList.toggle(ACTIVE_CLASS, sectionIndex === i);
@@ -163,14 +191,27 @@ export class DownloadManager {
                 const imageElement = element.querySelector<HTMLElement>('.red-image-preview')!;
 
                 try {
-                    const exported = await this.createCardBlob(imageElement);
-                    zip.file(`小红书笔记_第${i + 1}页.${exported.extension}`, exported.blob);
+                    const resources = await this.createResources(imageElement, options?.format ?? 'png', text => options?.progress?.(`第 ${i + 1}/${totalSections} 页 ${text}`));
+                    if (options?.format === 'live') photosPages.push(resources);
+                    else if (options?.format === 'live-package' && resources.some(resource => resource.name === 'card.mov')) {
+                        await addLivePackage(zip, `小红书笔记_第${String(i + 1).padStart(2, '0')}页`, resources);
+                    }
+                    else {
+                    for (const resource of resources) {
+                        const extension = resource.name.split('.').pop()!;
+                        const suffix = resource.name.endsWith('_MP.jpg') ? '_MP' : '';
+                        zip.file(`小红书笔记_第${String(i + 1).padStart(2, '0')}页${suffix}.${extension}`, resource.blob);
+                    }
+                    }
                     exportedCount++;
                 } catch (exportError) {
                     console.error(`第${i + 1}页导出失败`, exportError);
+                    failures.push(i + 1);
+                    new Notice(`第 ${i + 1} 页失败：${String(exportError)}`, 8000);
                 }
             }
 
+            } finally {
             // 恢复原始可见状态
             sections.forEach((section, index) => {
                 section.classList.toggle(ACTIVE_CLASS, originalVisibility[index].active);
@@ -182,9 +223,19 @@ export class DownloadManager {
             if (pageNumberEl) {
                 pageNumberEl.textContent = originalPageNumberText;
             }
+            }
+            if (failures.length) zip.file('导出失败页.txt', `以下页面未导出，请重试：${failures.join('、')}`);
+            if (options?.format === 'live-package') zip.file('Apple实况资源包说明.txt', livePackageInstructions);
+            if (options?.format === 'webp') zip.file('动态WebP使用说明.txt', '解压后按页序选择 PNG 和 WebP，从小红书网页“上传图文”入口测试。\n动态页为真正的 5 秒循环 WebP，静态页为 PNG。无声，不是 Live Photo。\n竖版在 720×960 内等比缩放，正方形在 800×800 内；目标体积不超过 9.5 MB。\n先检查上传后的预览，再检查发布后的动画是否保留。小红书兼容性尚未验证，不保证显示 LIVE 标识。');
 
             if (exportedCount === 0) {
-                throw new Error('所有页面均导出失败，未生成压缩包');
+                throw new Error('所有页面均导出失败');
+            }
+
+            if (options?.format === 'live') {
+                if (failures.length) throw new Error(`第 ${failures.join('、')} 页生成失败，本次尚未存入照片，请重试`);
+                await saveCardsToPhotos(photosPages, options.progress ?? (() => {}));
+                return true;
             }
 
             // 创建下载
@@ -200,6 +251,7 @@ export class DownloadManager {
                 throw new Error('生成的压缩文件不是有效的 Blob 对象');
             }
 
+            options?.progress?.('请选择保存位置（请查看保存对话框）…');
             return await this.saveBlob(
                 content,
                 `小红书笔记_${Date.now()}.zip`,
@@ -207,12 +259,18 @@ export class DownloadManager {
             );
         } catch (error) {
             console.error('导出图片失败:', error);
-            throw error;
+            throw exportError(error);
+        } finally {
+            exportHost?.remove();
         }
     }
 
-    static async downloadSingleImage(element: HTMLElement): Promise<boolean> {
+    static async downloadSingleImage(element: HTMLElement, format: CardExportFormat = 'png', progress: (text: string) => void = () => {}): Promise<boolean> {
+        let exportHost: HTMLElement | undefined;
         try {
+            const snapshot = captureExportSnapshot(element);
+            exportHost = snapshot.host;
+            element = snapshot.element;
             const imageElement = element.querySelector('.red-image-preview') as HTMLElement;
             if (!imageElement) {
                 throw new Error('找不到预览区域');
@@ -221,15 +279,34 @@ export class DownloadManager {
             // 确保浏览器完成重绘并等待资源加载
             await new Promise(resolve => setTimeout(resolve, 300));
 
-            const exported = await this.createCardBlob(imageElement);
+            const resources = await this.createResources(imageElement, format, progress);
+            if (format === 'live') {
+                await saveCardsToPhotos([resources], progress);
+                return true;
+            }
+            if (format === 'live-package' && resources.some(resource => resource.name === 'card.mov')) {
+                const zip = new JSZip();
+                const name = `小红书笔记_${Date.now()}`;
+                await addLivePackage(zip, name, resources);
+                zip.file('Apple实况资源包说明.txt', livePackageInstructions);
+                const content = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+                progress('请选择保存位置（解压后得到 .pvt 实况资源包）…');
+                return await this.saveBlob(content, `${name}.pvt.zip`, 'zip');
+            }
+            const extension = resources[0].name.split('.').pop()!;
+            const blob = resources[0].blob;
+            const suffix = resources[0].name.endsWith('_MP.jpg') ? '_MP' : '';
+            progress('请选择保存位置（请查看保存对话框）…');
             return await this.saveBlob(
-                exported.blob,
-                `小红书笔记_${new Date().getTime()}.${exported.extension}`,
-                exported.extension
+                blob,
+                `小红书笔记_${new Date().getTime()}${suffix}.${extension}`,
+                extension
             );
         } catch (error) {
             console.error('导出图片失败:', error);
-            throw error;
+            throw exportError(error);
+        } finally {
+            exportHost?.remove();
         }
     }
 }

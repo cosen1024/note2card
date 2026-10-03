@@ -1,5 +1,6 @@
 import * as htmlToImage from 'html-to-image';
 import { withInlinedRemoteResources } from './exportResourceInliner';
+import { shouldExportNode } from './exportVisibility';
 
 export class ClipboardManager {
     private static getExportConfig(imageElement: HTMLElement) {
@@ -7,9 +8,7 @@ export class ClipboardManager {
             quality: 1,
             pixelRatio: 4,
             skipFonts: false,
-            filter: (node: Node) => {
-                return true;
-            },
+            filter: shouldExportNode,
             imagePlaceholder: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
         };
     }

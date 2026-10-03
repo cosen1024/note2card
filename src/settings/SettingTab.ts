@@ -54,6 +54,15 @@ export class RedSettingTab extends PluginSettingTab {
 
         containerEl.createEl('h2', { text: 'Note to Card 设置' });
 
+        new Setting(containerEl)
+            .setName('显示卡片页码')
+            .setDesc('关闭后，预览和导出都不显示右下角的 1 / 5；预览翻页按钮仍保留。')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settingsManager.getSettings().showPageNumber ?? false)
+                .onChange(async value => {
+                    await this.plugin.settingsManager.updateSettings({ showPageNumber: value });
+                }));
+
         this.createSection(containerEl, '基本设置', el => this.renderBasicSettings(el));
         this.createSection(containerEl, '主题设置', el => this.renderThemeSettings(el));
     }
@@ -90,12 +99,13 @@ export class RedSettingTab extends PluginSettingTab {
         // 分页模式
         const paginationModeSetting = new Setting(typographyContent)
             .setName('分页模式')
-            .setDesc('默认按整篇连续自动分页；也可切换为按标题分组分页')
+            .setDesc('连续和标题模式可开启自动分页；仅按分隔符模式只在独立的 --- 处分割，不自动拆页')
             .addDropdown(dropdown => dropdown
-                .addOption('continuous', '整篇连续自动分页')
+                .addOption('continuous', '整篇连续分页')
                 .addOption('headings', '按标题分组分页')
+                .addOption('separators', '仅按分隔符分页（---）')
                 .setValue(this.plugin.settingsManager.getSettings().paginationMode ?? 'continuous')
-                .onChange(async (value: 'continuous' | 'headings') => {
+                .onChange(async (value: 'continuous' | 'headings' | 'separators') => {
                     await this.plugin.settingsManager.updateSettings({
                         paginationMode: value
                     });
@@ -120,7 +130,7 @@ export class RedSettingTab extends PluginSettingTab {
             );
 
         // 自动分页
-        new Setting(typographyContent)
+        const autoPaginationSetting = new Setting(typographyContent)
             .setName('自动分页')
             .setDesc('按卡片真实排版测量内容；图片放不下时会优先等比缩小，避免产生大量空白页')
             .addToggle(toggle => toggle
@@ -162,8 +172,11 @@ export class RedSettingTab extends PluginSettingTab {
             this.plugin.settingsManager.getSettings().autoPaginate ? '' : 'none';
 
         const updateHeadingSettingVisibility = () => {
-            const isHeadingMode = this.plugin.settingsManager.getSettings().paginationMode === 'headings';
+            const settings = this.plugin.settingsManager.getSettings();
+            const isHeadingMode = settings.paginationMode === 'headings';
             headingLevelSetting.settingEl.style.display = isHeadingMode ? '' : 'none';
+            autoPaginationSetting.settingEl.style.display = settings.paginationMode === 'separators' ? 'none' : '';
+            maxHeightSetting.settingEl.style.display = settings.paginationMode !== 'separators' && settings.autoPaginate ? '' : 'none';
         };
 
         updateHeadingSettingVisibility();
@@ -180,17 +193,6 @@ export class RedSettingTab extends PluginSettingTab {
                     await this.plugin.settingsManager.updateSettings({
                         userInfoMode: value as 'all' | 'first-only'
                     });
-                })
-            );
-
-        // 显示页码
-        new Setting(typographyContent)
-            .setName('显示页码')
-            .setDesc('在每张卡片右下角显示页码（如 1 / 5）')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settingsManager.getSettings().showPageNumber ?? false)
-                .onChange(async (value) => {
-                    await this.plugin.settingsManager.updateSettings({ showPageNumber: value });
                 })
             );
 

@@ -1,4 +1,5 @@
 import { requestUrl } from 'obsidian';
+import { isInExportTree } from './exportVisibility';
 
 const DATA_URL_PATTERN = /^data:/i;
 const REMOTE_URL_PATTERN = /^https?:\/\//i;
@@ -20,7 +21,7 @@ function arrayBufferToDataUrl(arrayBuffer: ArrayBuffer, contentType: string): Pr
 
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onerror = reject;
+        reader.onerror = () => reject(new Error('导出素材读取失败'));
         reader.onloadend = () => resolve(reader.result as string);
         reader.readAsDataURL(blob);
     });
@@ -104,8 +105,8 @@ export async function withInlinedRemoteResources<T>(
     const restoreCallbacks: Array<() => void> = [];
 
     try {
-        const images = Array.from(root.querySelectorAll<HTMLImageElement>('img'));
-        const styledElements = [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))];
+        const images = Array.from(root.querySelectorAll<HTMLImageElement>('img')).filter(el => isInExportTree(el, root));
+        const styledElements = [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))].filter(el => isInExportTree(el, root));
 
         await Promise.all([
             ...images.map((img) => inlineImageElement(img, restoreCallbacks)),

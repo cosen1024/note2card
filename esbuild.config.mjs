@@ -34,6 +34,7 @@ const config = {
     format: 'cjs',
     target: 'es2018',
     loader: {
+        '.swift': 'text',
         '.jpg': 'dataurl',
         '.jpeg': 'dataurl'
     },

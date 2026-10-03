@@ -91,7 +91,7 @@ export class RedConverter {
         element.empty();
         element.createEl('div', {
             cls: 'red-empty-message',
-            text: paginationMode === 'continuous'
+            text: paginationMode !== 'headings'
                 ? `⚠️ 温馨提示
                         请输入 Markdown 内容后再生成图片预览
                         支持整篇连续自动分页，也支持使用 --- 手动分页`
@@ -112,7 +112,7 @@ export class RedConverter {
         paginationMode: PaginationMode,
         headingLevel: 'h1' | 'h2'
     ): HTMLElement[] {
-        if (paginationMode === 'continuous') {
+        if (paginationMode === 'continuous' || paginationMode === 'separators') {
             return this.createSectionsFromContent(renderedElements, 'continuous');
         }
 
@@ -120,7 +120,10 @@ export class RedConverter {
             el => el.tagName === headingLevel.toUpperCase()
         );
 
-        return headers.flatMap((header, index) => {
+        // Keep the introduction; heading mode must never silently discard content.
+        const firstHeadingIndex = headers.length ? renderedElements.indexOf(headers[0]) : renderedElements.length;
+        const introduction = this.createSectionsFromContent(renderedElements.slice(0, firstHeadingIndex), 'introduction');
+        return introduction.concat(headers.flatMap((header, index) => {
             const content: Element[] = [];
             let current = header.nextElementSibling;
 
@@ -130,7 +133,7 @@ export class RedConverter {
             }
 
             return this.createSectionsFromContent(content, `heading-${index}`, header);
-        });
+        }));
     }
 
     private static createSectionsFromContent(
@@ -248,6 +251,18 @@ export class RedConverter {
                 const file = this.app.metadataCache.getFirstLinkpathDest(linktext, '');
                 if (file) {
                     const absolutePath = this.app.vault.adapter.getResourcePath(file.path);
+                    if (/\.(mp4|mov|webm|m4v)$/i.test(file.path)) {
+                        const video = document.createElement('video');
+                        video.src = absolutePath;
+                        video.controls = true;
+                        video.muted = true;
+                        video.loop = true;
+                        video.playsInline = true;
+                        video.preload = 'auto';
+                        video.className = 'red-image';
+                        originalSpan.parentNode?.replaceChild(video, originalSpan);
+                        return;
+                    }
                     const newImg = document.createElement('img');
                     newImg.src = absolutePath;
                     if (alt) newImg.alt = alt;

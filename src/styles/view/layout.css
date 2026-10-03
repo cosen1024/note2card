@@ -2,10 +2,10 @@
 .red-preview-wrapper {
     padding: 10px 20px 20px 20px;
     margin: 10px;
-    height: calc(100% - 180px);
+    min-height: 0;
     overflow-y: auto;
     background: var(--background-primary);
-    flex: 1;
+    flex: 1 1 0;
     border-radius: 12px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
     border: 1px solid rgba(82, 144, 220, 0.1);
@@ -128,6 +128,16 @@
 }
 
 /* 内容区块样式 */
+.red-preview-wrapper > .red-nav-container {
+    position: sticky;
+    bottom: 0;
+    left: auto;
+    transform: none;
+    width: fit-content;
+    max-width: 100%;
+    margin: 16px auto 0;
+}
+
 .red-content-section {
     display: none;
     margin: 0 13px;

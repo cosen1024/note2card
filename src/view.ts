@@ -1,6 +1,7 @@
-import { ItemView, WorkspaceLeaf, MarkdownRenderer, TFile, Notice, setIcon } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownRenderer, TFile, Notice, setIcon, Modal, Platform } from 'obsidian';
 import { RedConverter } from './converter';
 import { DownloadManager } from './downloadManager';
+import { CardExportFormat } from './motionCardExporter';
 import type { ThemeManager } from './themeManager';
 import { DonateManager } from './donateManager';
 import type { SettingsManager } from './settings/settings';
@@ -280,14 +281,15 @@ export class RedView extends ItemView {
         const content = imagePreview.querySelector<HTMLElement>('.red-preview-content')?.cloneNode(false) as HTMLElement
             || document.createElement('div');
         const container = contentContainer.cloneNode(false) as HTMLElement;
-        const previewWidth = Math.ceil(imagePreview.getBoundingClientRect().width || imagePreview.clientWidth || 490);
+        const previewWidth = imagePreview.offsetWidth || imagePreview.clientWidth || 490;
 
         root.style.cssText += `;position:fixed;left:-10000px;top:0;visibility:hidden;pointer-events:none;display:block;width:${previewWidth}px;max-width:none;height:auto;min-height:0;aspect-ratio:auto;overflow:visible;box-sizing:border-box;`;
         content.style.display = 'block';
         container.style.display = 'block';
         content.appendChild(container);
         root.appendChild(content);
-        document.body.appendChild(root);
+        // Retain the preview's inherited fonts and pane-specific styles while measuring.
+        (imagePreview.parentElement || document.body).appendChild(root);
 
         return { root, container };
     }
@@ -309,7 +311,7 @@ export class RedView extends ItemView {
         availableHeight: number,
         measureContainer: HTMLElement
     ): HTMLElement | null {
-        if (availableHeight < 180) return null;
+        if (availableHeight < 140) return null;
 
         const fitted = element.cloneNode(true) as HTMLElement;
         const mediaElements: HTMLElement[] = [];
@@ -317,19 +319,25 @@ export class RedView extends ItemView {
         mediaElements.push(...Array.from(fitted.querySelectorAll<HTMLElement>('img, video')));
         if (mediaElements.length === 0) return null;
 
-        const mediaMaxHeight = Math.max(140, availableHeight - 36);
         mediaElements.forEach(media => {
-            media.style.setProperty('max-height', `${mediaMaxHeight}px`, 'important');
             media.style.setProperty('width', 'auto', 'important');
+            media.style.setProperty('height', 'auto', 'important');
             media.style.setProperty('max-width', '100%', 'important');
             media.style.setProperty('object-fit', 'contain', 'important');
             media.style.setProperty('margin-left', 'auto', 'important');
             media.style.setProperty('margin-right', 'auto', 'important');
         });
 
-        return this.measureElementHeight(measureContainer, fitted) <= availableHeight
-            ? fitted
-            : null;
+        // Theme margins, wrapper padding and borders vary. Measure them instead
+        // of assuming a fixed 36px, which made warm-theme images always overflow.
+        let mediaMaxHeight = availableHeight;
+        for (let attempt = 0; attempt < 8 && mediaMaxHeight >= 100; attempt++) {
+            mediaElements.forEach(media => media.style.setProperty('max-height', `${mediaMaxHeight}px`, 'important'));
+            const measuredHeight = this.measureElementHeight(measureContainer, fitted);
+            if (measuredHeight <= availableHeight) return fitted;
+            mediaMaxHeight -= Math.ceil(measuredHeight - availableHeight) + 1;
+        }
+        return null;
     }
 
     private splitOversizedTextElement(
@@ -359,7 +367,7 @@ export class RedView extends ItemView {
 
     private async autoSplitOverflow(): Promise<void> {
         const settings = this.settingsManager.getSettings();
-        if (!settings.autoPaginate) return;
+        if (!settings.autoPaginate || settings.paginationMode === 'separators') return;
 
         const maxHeight = settings.cardMaxHeight || 800;
         const container = this.previewEl.querySelector<HTMLElement>('.red-content-container');
@@ -463,7 +471,8 @@ export class RedView extends ItemView {
                     }
                 }
 
-                if (pages.length <= 1) continue;
+                // Even when fitting reduces the result to one page, keep the
+                // fitted media styles rather than discarding the successful fit.
 
                 const parent = section.parentNode;
                 if (!parent) continue;
@@ -614,7 +623,11 @@ export class RedView extends ItemView {
         });
 
         const updateFontSize = async () => {
-            const size = parseInt(this.fontSizeSelect.value);
+            const parsedSize = Number(this.fontSizeSelect.value);
+            const size = Number.isFinite(parsedSize) && parsedSize > 0
+                ? Math.max(12, Math.min(30, Math.round(parsedSize)))
+                : this.settingsManager.getSettings().fontSize;
+            this.fontSizeSelect.value = String(size);
             this.themeManager.setFontSize(size);
             await this.settingsManager.updateSettings({ fontSize: size });
         };
@@ -644,19 +657,18 @@ export class RedView extends ItemView {
             attr: { 'aria-label': '使用指南' }
         });
         setIcon(helpButton, 'help');
-        const headingLevel = this.settingsManager.getSettings().headingLevel || 'h1';
-        parent.createEl('div', {
-            cls: 'red-help-tooltip',
-            text: `使用指南：
-                1. 核心用法：用${headingLevel === 'h1' ? '一级标题(#)' : '二级标题(##)'}来分割内容，每个标题生成一张小红书配图
-                2. 内容分页：在${headingLevel === 'h1' ? '一级标题(#)' : '二级标题(##)'}下使用 --- 可将内容分割为多页，每页都会带上标题
-                3. 首图制作：单独调整首节字号至20-24px，使用【下载当前页】导出
-                4. 长文优化：内容较多的章节可调小字号至14-16px后单独导出
-                5. 批量操作：保持统一字号时，用【导出全部页】批量生成
-                6. 模板切换：顶部选择器可切换不同视觉风格
-                7. 实时编辑：解锁状态(🔓)下编辑文档即时预览效果
-                8. 动图导出：当前页含 GIF 时会自动导出动态 GIF，普通页面仍为 PNG
-                9. 关于插件：点击「关于作者」查看库森的介绍与联系方式`
+        helpButton.addEventListener('click', () => {
+            const modal = new Modal(this.app);
+            modal.contentEl.createEl('h2', { text: '使用指南' });
+            for (const text of [
+                '分页：设置中可选整篇连续、按标题分组、仅按分隔符。分隔符请单独写一行 ---，前后留空行。',
+                '仅按分隔符模式不会自动拆页。内容过长时请增加分隔符或缩小字号，导出前检查卡片底部。',
+                '连续和标题模式可开启自动分页。标题模式保留开头正文，拆页不会重复标题。',
+                'PNG 用于静态卡片；GIF 保留动态素材；Mac 还可导出 5 秒无声 MP4 和 Apple 实况资源包。资源包不保证可直接导入手机或上传平台。',
+                '下载当前页用于单页，导出全部页生成 ZIP。静态页保持 PNG，解压后再使用其中的文件。',
+                '解锁后编辑笔记会更新预览；页码开关位于插件设置顶部。'
+            ]) modal.contentEl.createEl('p', { text });
+            modal.open();
         });
     }
 
@@ -673,58 +685,81 @@ export class RedView extends ItemView {
     }
 
     private initializeExportButtons(parent: HTMLElement) {
+        const formatSelect = parent.createEl('select', { cls: 'red-export-format', attr: { 'aria-label': '导出格式', title: '动态页支持 GIF/视频素材；静态页导出 PNG' } });
+        const formats = [['png', 'PNG 图片'], ['gif', 'GIF 动图']];
+        if (Platform.isMacOS) formats.push(['mp4', '动态 MP4（Mac）'], ['live-package', 'Apple 实况资源包（Mac）']);
+        for (const [value, label] of formats) {
+            formatSelect.createEl('option', { value, text: label });
+        }
+        const actions = parent.createEl('div', { cls: 'red-export-actions' });
+        const status = parent.createEl('div', { cls: 'red-export-status', attr: { role: 'status', 'aria-live': 'polite' } });
+        const showProgress = (text: string) => { status.setText(text); };
         // 单张下载按钮
-        const singleDownloadButton = parent.createEl('button', {
+        const singleDownloadButton = actions.createEl('button', {
             text: '下载当前页',
             cls: 'red-export-button'
         });
 
-        singleDownloadButton.addEventListener('click', async () => {
+        singleDownloadButton.addEventListener('click', () => DownloadManager.withExportLock(async () => {
             if (this.previewEl) {
                 singleDownloadButton.disabled = true;
                 singleDownloadButton.setText('导出中...');
+                formatSelect.disabled = true;
+                showProgress('正在准备导出…');
 
                 try {
-                    const saved = await DownloadManager.downloadSingleImage(this.previewEl);
+                    const saved = await DownloadManager.downloadSingleImage(this.previewEl, formatSelect.value as CardExportFormat, showProgress);
                     singleDownloadButton.setText(saved ? '导出成功' : '已取消');
+                    showProgress(saved ? (formatSelect.value === 'live' ? '已存入照片，可同步手机发布' : '当前页导出完成') : '已取消导出');
                 } catch (error) {
                     singleDownloadButton.setText('导出失败');
+                    showProgress(String(error));
+                    new Notice(String(error), 10000);
                 } finally {
+                    formatSelect.disabled = false;
                     setTimeout(() => {
                         singleDownloadButton.disabled = false;
                         singleDownloadButton.setText('下载当前页');
                     }, 2000);
                 }
             }
-        });
+        }));
 
         // 批量导出按钮
-        this.copyButton = parent.createEl('button', {
+        this.copyButton = actions.createEl('button', {
             text: '导出全部页',
             cls: 'red-export-button'
         });
 
-        this.copyButton.addEventListener('click', async () => {
+        this.copyButton.addEventListener('click', () => DownloadManager.withExportLock(async () => {
             if (this.previewEl) {
                 this.copyButton.disabled = true;
                 this.copyButton.setText('导出中...');
+                formatSelect.disabled = true;
+                showProgress('正在准备批量导出…');
 
                 try {
                     const dlSettings = this.settingsManager.getSettings();
                     const saved = await DownloadManager.downloadAllImages(this.previewEl, {
+                        format: formatSelect.value as CardExportFormat,
+                        progress: showProgress,
                         showHeaderOnFirstOnly: dlSettings.userInfoMode === 'first-only'
                     });
                     this.copyButton.setText(saved ? '导出成功' : '已取消');
+                    showProgress(saved ? (formatSelect.value === 'live' ? '全部卡片已存入照片，可同步手机发布' : '导出流程结束，请检查导出文件及失败提示') : '已取消导出');
                 } catch (error) {
                     this.copyButton.setText('导出失败');
+                    showProgress(String(error));
+                    new Notice(String(error), 10000);
                 } finally {
+                    formatSelect.disabled = false;
                     setTimeout(() => {
                         this.copyButton.disabled = false;
                         this.copyButton.setText('导出全部页');
                     }, 2000);
                 }
             }
-        });
+        }));
     }
 
     private initializeCopyButtonListener() {
