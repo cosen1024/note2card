@@ -1,6 +1,6 @@
 {
   "name": "note-to-card",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "一键将 Obsidian 笔记转换为小红书图片格式",
   "main": "main.js",
   "scripts": {
