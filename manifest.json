@@ -1,7 +1,7 @@
 {
     "id": "note-to-card",
     "name": "Note to Card",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "minAppVersion": "0.15.0",
     "description": "将 Markdown 笔记导出为精美图片卡片",
     "author": "库森",

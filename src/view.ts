@@ -664,7 +664,7 @@ export class RedView extends ItemView {
                 '分页：设置中可选整篇连续、按标题分组、仅按分隔符。分隔符请单独写一行 ---，前后留空行。',
                 '仅按分隔符模式不会自动拆页。内容过长时请增加分隔符或缩小字号，导出前检查卡片底部。',
                 '连续和标题模式可开启自动分页。标题模式保留开头正文，拆页不会重复标题。',
-                'PNG 用于静态卡片；GIF 保留动态素材；Mac 还可导出 5 秒无声 MP4 和 Apple 实况资源包。资源包不保证可直接导入手机或上传平台。',
+                'PNG 用于静态卡片；动态 WebP 和 GIF 保留动态素材；Mac 还可导出 MP4、安卓动态照片和 Apple 实况资源包。',
                 '下载当前页用于单页，导出全部页生成 ZIP。静态页保持 PNG，解压后再使用其中的文件。',
                 '解锁后编辑笔记会更新预览；页码开关位于插件设置顶部。'
             ]) modal.contentEl.createEl('p', { text });
@@ -686,8 +686,8 @@ export class RedView extends ItemView {
 
     private initializeExportButtons(parent: HTMLElement) {
         const formatSelect = parent.createEl('select', { cls: 'red-export-format', attr: { 'aria-label': '导出格式', title: '动态页支持 GIF/视频素材；静态页导出 PNG' } });
-        const formats = [['png', 'PNG 图片'], ['gif', 'GIF 动图']];
-        if (Platform.isMacOS) formats.push(['mp4', '动态 MP4（Mac）'], ['live-package', 'Apple 实况资源包（Mac）']);
+        const formats = [['png', 'PNG 图片'], ['webp', '动态 WebP'], ['gif', 'GIF 动图']];
+        if (Platform.isMacOS) formats.push(['mp4', '动态 MP4（Mac）'], ['android', '安卓动态照片'], ['live-package', 'Apple 实况资源包（Mac）']);
         for (const [value, label] of formats) {
             formatSelect.createEl('option', { value, text: label });
         }
