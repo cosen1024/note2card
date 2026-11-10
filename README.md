@@ -49,10 +49,10 @@ Apple 实况资源包的目录结构参考了 [LiveCanvas](https://github.com/pe
 | GIF | 卡片内有动态素材时生成动图；平台可能转为静态，需检查发布结果 |
 | 动态 MP4（Mac） | 5 秒、30fps、宽 1080px、无声，保持卡片比例 |
 | 安卓动态照片 | 在 Mac 导出单个 `_MP.jpg`，内含 JPEG 封面、XMP 元数据和 5 秒 MP4；将原文件传入手机相册使用 |
-| vivo 实况照片（Mac） | **仅适配 vivo / iQOO 手机。** 在 Mac 导出 ZIP，每个动态页是一对同名 JPG + MP4；3 秒、30fps、宽 1080px、无声。用法见下方「vivo 实况照片」 |
+| vivo 实况照片（Mac） | **仅适配 vivo / iQOO 手机。** 在 Mac 导出 ZIP，每个动态页是一对同名 JPG + MP4；5 秒、30fps、宽 1080px、无声。用法见下方「vivo 实况照片」 |
 | Apple 实况资源包（Mac） | `.pvt.zip` 内含配对 JPEG、MOV 和 `metadata.plist`；不是可直接上传的普通图片 |
 
-动态素材可使用 `![[演示.gif]]`、`![[演示.mp4]]`。短素材循环，长素材截取前 5 秒（vivo 实况照片为前 3 秒）。本地素材最可靠；跨域视频可能无法读取。Mac 原生导出需要 Apple Command Line Tools；缺少时运行 `xcode-select --install`。不需要 FFmpeg。
+动态素材可使用 `![[演示.gif]]`、`![[演示.mp4]]`。短素材循环，长素材截取前 5 秒。本地素材最可靠；跨域视频可能无法读取。Mac 原生导出需要 Apple Command Line Tools；缺少时运行 `xcode-select --install`。不需要 FFmpeg。
 
 ### vivo 实况照片
 
@@ -71,7 +71,7 @@ Apple 实况资源包的目录结构参考了 [LiveCanvas](https://github.com/pe
 
 - **只适配 vivo / iQOO。** 这是 vivo 的私有格式，其他品牌的相册不会识别。其他安卓手机请用「安卓动态照片」或「动态 MP4」。
 - **JPG 和 MP4 必须成对。** 两个文件同名，内部写有相同的配对 ID。不要改名，不要只复制 JPG，不要用修图软件另存。
-- **长度固定 3 秒。** vivo 相册只播放约 3 秒，更长的片段会被截掉。短素材循环，长素材只保留前 3 秒。
+- **长度 5 秒，相册预览较短。** vivo 相册只播放前 3 秒左右，这是相册的限制，文件本身是完整的 5 秒。在 vivo X200 上实测，上传到小红书后播放完整长度。
 - **无声。** 封面是第一帧。
 - **实测范围有限。** 已在 vivo X200 上实测：相册识别为实况，小红书选图可识别。其他机型和 OriginOS 版本未验证；发布后的动态效果以实际结果为准。
 - vivo 没有公开这个格式的规范。文件结构参考了 [vivo-live-photo-converter](https://github.com/Acherryrui2042/vivo-live-photo-converter) 公开的可识别样本，后续系统升级可能使其失效。

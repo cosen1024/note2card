@@ -13,8 +13,6 @@ export interface CardResource { name: string; blob: Blob }
 const FPS = 30;
 const DURATION_SECONDS = 5;
 const FRAME_COUNT = FPS * DURATION_SECONDS;
-// vivo 相册只播放约 3 秒（X200 实测），更长的片段会被截掉后半段。
-const VIVO_DURATION_SECONDS = 3;
 const visible = (el: HTMLElement) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
 const isGif = (image: HTMLImageElement) => /^data:image\/gif[;,]/i.test(image.currentSrc || image.src) || /\.gif(?:[?#]|$)/i.test(image.currentSrc || image.src);
 
@@ -87,7 +85,7 @@ export async function exportMotionCard(root: HTMLElement, format: 'mp4' | 'live'
     const path = webp ? undefined : require('path');
     let directory = '';
     const fps = webp ? 15 : FPS;
-    const frameCount = fps * (format === 'vivo' ? VIVO_DURATION_SECONDS : DURATION_SECONDS);
+    const frameCount = fps * DURATION_SECONDS;
     // vivo 元数据把封面时间记为 0，所以封面取第一帧。
     const coverIndex = format === 'vivo' ? 0 : format === 'android' ? Math.floor(frameCount / 2) : -1;
     const webpFrames: Uint8Array[] = [];

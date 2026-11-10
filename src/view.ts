@@ -665,7 +665,7 @@ export class RedView extends ItemView {
                 '分页：设置中可选整篇连续、按标题分组、仅按分隔符。分隔符请单独写一行 ---，前后留空行。',
                 '仅按分隔符模式不会自动拆页。内容过长时请增加分隔符或缩小字号，导出前检查卡片底部。',
                 '连续和标题模式可开启自动分页。标题模式保留开头正文，拆页不会重复标题。',
-                'PNG 用于静态卡片；动态 WebP 和 GIF 保留动态素材；Mac 还可导出 MP4、安卓动态照片、vivo 实况照片和 Apple 实况资源包。vivo 实况照片仅适配 vivo / iQOO 手机，长度 3 秒，JPG 与 MP4 需成对传入手机 DCIM/Camera。',
+                'PNG 用于静态卡片；动态 WebP 和 GIF 保留动态素材；Mac 还可导出 MP4、安卓动态照片、vivo 实况照片和 Apple 实况资源包。vivo 实况照片仅适配 vivo / iQOO 手机，长度 5 秒（相册预览只播约 3 秒），JPG 与 MP4 需成对传入手机 DCIM/Camera。',
                 '下载当前页用于单页，导出全部页生成 ZIP。静态页保持 PNG，解压后再使用其中的文件。',
                 '解锁后编辑笔记会更新预览；页码开关位于插件设置顶部。'
             ]) modal.contentEl.createEl('p', { text });
