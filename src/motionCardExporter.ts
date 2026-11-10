@@ -3,15 +3,18 @@ import { decodeFrames } from 'modern-gif';
 import swiftSource from './livePhoto.swift';
 import { shouldExportNode, exportError } from './exportVisibility';
 import { packAndroidMotionPhoto } from './androidMotionPhoto';
+import { packVivoLivePhoto } from './vivoLivePhoto';
 import { encodeWebpFrame, fitAnimatedWebp, webpDimensions } from './animatedWebp';
 import { captureExportSnapshot } from './exportSnapshot';
 import { createMotionFrameRenderer } from './motionFrameRenderer';
 
-export type CardExportFormat = 'png' | 'gif' | 'mp4' | 'live' | 'live-package' | 'android' | 'webp';
+export type CardExportFormat = 'png' | 'gif' | 'mp4' | 'live' | 'live-package' | 'android' | 'vivo' | 'webp';
 export interface CardResource { name: string; blob: Blob }
 const FPS = 30;
 const DURATION_SECONDS = 5;
 const FRAME_COUNT = FPS * DURATION_SECONDS;
+// vivo 相册只播放约 3 秒（X200 实测），更长的片段会被截掉后半段。
+const VIVO_DURATION_SECONDS = 3;
 const visible = (el: HTMLElement) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
 const isGif = (image: HTMLImageElement) => /^data:image\/gif[;,]/i.test(image.currentSrc || image.src) || /\.gif(?:[?#]|$)/i.test(image.currentSrc || image.src);
 
@@ -75,7 +78,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
 }
 
 /** Render a detached clone so GIF sampling and video seeking never alter the preview. */
-export async function exportMotionCard(root: HTMLElement, format: 'mp4' | 'live' | 'android' | 'webp', progress: (text: string) => void): Promise<CardResource[]> {
+export async function exportMotionCard(root: HTMLElement, format: 'mp4' | 'live' | 'android' | 'vivo' | 'webp', progress: (text: string) => void): Promise<CardResource[]> {
     const webp = format === 'webp';
     if (!webp && (typeof process === 'undefined' || process.platform !== 'darwin')) throw new Error('动态 MP4 / 实况导出目前支持 Mac 桌面版');
     const { host, element: clone } = captureExportSnapshot(root);
@@ -84,7 +87,9 @@ export async function exportMotionCard(root: HTMLElement, format: 'mp4' | 'live'
     const path = webp ? undefined : require('path');
     let directory = '';
     const fps = webp ? 15 : FPS;
-    const frameCount = webp ? fps * DURATION_SECONDS : FRAME_COUNT;
+    const frameCount = fps * (format === 'vivo' ? VIVO_DURATION_SECONDS : DURATION_SECONDS);
+    // vivo 元数据把封面时间记为 0，所以封面取第一帧。
+    const coverIndex = format === 'vivo' ? 0 : format === 'android' ? Math.floor(frameCount / 2) : -1;
     const webpFrames: Uint8Array[] = [];
     let stage = '加载动态素材';
     const loadedVideos: HTMLVideoElement[] = [];
@@ -176,7 +181,7 @@ export async function exportMotionCard(root: HTMLElement, format: 'mp4' | 'live'
                 webpFrames.push(await encodeWebpFrame(canvas));
                 continue;
             }
-            if (format === 'android' && index === Math.floor(FRAME_COUNT / 2)) {
+            if (index === coverIndex) {
                 cover = new Uint8Array(Buffer.from(canvas.toDataURL('image/jpeg', 0.95).split(',')[1], 'base64'));
             }
             const bytes = Buffer.from(canvas.toDataURL('image/png').split(',')[1], 'base64');
@@ -188,12 +193,17 @@ export async function exportMotionCard(root: HTMLElement, format: 'mp4' | 'live'
             const packed = fitAnimatedWebp(webpFrames, width, height);
             return [{ name: 'card.webp', blob: new Blob([packed], { type: 'image/webp' }) }];
         }
-        await execFile(encoder, [directory, String(FRAME_COUNT), String(FPS), format === 'android' ? 'mp4' : format]);
+        await execFile(encoder, [directory, String(frameCount), String(FPS), format === 'android' || format === 'vivo' ? 'mp4' : format]);
         if (format === 'android') {
             if (!cover) throw new Error('未生成动态照片封面');
             const video = new Uint8Array(await fs.readFile(path.join(directory, 'card.mp4')));
             const packed = packAndroidMotionPhoto(cover, video, Math.floor(FRAME_COUNT / 2) * 1_000_000 / FPS);
             return [{ name: 'card_MP.jpg', blob: new Blob([packed], { type: 'image/jpeg' }) }];
+        }
+        if (format === 'vivo') {
+            if (!cover) throw new Error('未生成实况封面');
+            const pair = packVivoLivePhoto(cover, new Uint8Array(await fs.readFile(path.join(directory, 'card.mp4'))));
+            return [{ name: 'card.jpg', blob: new Blob([pair.jpeg], { type: 'image/jpeg' }) }, { name: 'card.mp4', blob: new Blob([pair.mp4], { type: 'video/mp4' }) }];
         }
         const names = format === 'live' ? ['card.jpg', 'card.mov'] : ['card.mp4'];
         return await Promise.all(names.map(async name => ({ name, blob: new Blob([await fs.readFile(path.join(directory, name))], { type: name.endsWith('.jpg') ? 'image/jpeg' : name.endsWith('.mov') ? 'video/quicktime' : 'video/mp4' }) })));

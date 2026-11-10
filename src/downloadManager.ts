@@ -9,6 +9,7 @@ import { CardExportFormat, CardResource, exportMotionCard, hasMotion } from './m
 import { saveCardsToPhotos } from './photosLibrary';
 import { captureExportSnapshot } from './exportSnapshot';
 import { addLivePackage, livePackageInstructions } from './livePhotoPackage';
+import { addVivoLivePhoto, isVivoPair, vivoBaseName, vivoLivePhotoInstructions } from './vivoLivePhotoPackage';
 
 
 export class DownloadManager {
@@ -22,7 +23,7 @@ export class DownloadManager {
 
     private static async createResources(root: HTMLElement, format: CardExportFormat, progress: (text: string) => void): Promise<CardResource[]> {
         if (format === 'live-package' && hasMotion(root)) return exportMotionCard(root, 'live', progress);
-        if ((format === 'mp4' || format === 'live' || format === 'android' || format === 'webp') && hasMotion(root)) return exportMotionCard(root, format, progress);
+        if ((format === 'mp4' || format === 'live' || format === 'android' || format === 'vivo' || format === 'webp') && hasMotion(root)) return exportMotionCard(root, format, progress);
         if (format === 'gif') {
             const result = await this.createCardBlob(root);
             return [{ name: `card.${result.extension}`, blob: result.blob }];
@@ -167,6 +168,7 @@ export class DownloadManager {
 
             const failures: number[] = [];
             const photosPages: CardResource[][] = [];
+            const vivoName = vivoBaseName();
             try {
             for (let i = 0; i < totalSections; i++) {
                 sections.forEach((section, sectionIndex) => {
@@ -195,6 +197,9 @@ export class DownloadManager {
                     if (options?.format === 'live') photosPages.push(resources);
                     else if (options?.format === 'live-package' && resources.some(resource => resource.name === 'card.mov')) {
                         await addLivePackage(zip, `小红书笔记_第${String(i + 1).padStart(2, '0')}页`, resources);
+                    }
+                    else if (options?.format === 'vivo' && isVivoPair(resources)) {
+                        await addVivoLivePhoto(zip, `${vivoName}_P${String(i + 1).padStart(2, '0')}`, resources);
                     }
                     else {
                     for (const resource of resources) {
@@ -226,6 +231,7 @@ export class DownloadManager {
             }
             if (failures.length) zip.file('导出失败页.txt', `以下页面未导出，请重试：${failures.join('、')}`);
             if (options?.format === 'live-package') zip.file('Apple实况资源包说明.txt', livePackageInstructions);
+            if (options?.format === 'vivo') zip.file('vivo实况导入说明.txt', vivoLivePhotoInstructions);
             if (options?.format === 'webp') zip.file('动态WebP使用说明.txt', '解压后按页序选择 PNG 和 WebP，从小红书网页“上传图文”入口测试。\n动态页为真正的 5 秒循环 WebP，静态页为 PNG。无声，不是 Live Photo。\n竖版在 720×960 内等比缩放，正方形在 800×800 内；目标体积不超过 9.5 MB。\n先检查上传后的预览，再检查发布后的动画是否保留。小红书兼容性尚未验证，不保证显示 LIVE 标识。');
 
             if (exportedCount === 0) {
@@ -292,6 +298,14 @@ export class DownloadManager {
                 const content = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
                 progress('请选择保存位置（解压后得到 .pvt 实况资源包）…');
                 return await this.saveBlob(content, `${name}.pvt.zip`, 'zip');
+            }
+            if (format === 'vivo' && isVivoPair(resources)) {
+                const zip = new JSZip();
+                await addVivoLivePhoto(zip, vivoBaseName(), resources);
+                zip.file('vivo实况导入说明.txt', vivoLivePhotoInstructions);
+                const content = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+                progress('请选择保存位置（请查看保存对话框）…');
+                return await this.saveBlob(content, `小红书笔记_vivo实况_${Date.now()}.zip`, 'zip');
             }
             const extension = resources[0].name.split('.').pop()!;
             const blob = resources[0].blob;
