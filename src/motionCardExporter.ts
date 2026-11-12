@@ -21,9 +21,9 @@ export function hasMotion(root: HTMLElement): boolean {
         || Array.from(root.querySelectorAll<HTMLVideoElement>('video')).some(visible);
 }
 
-function execFile(file: string, args: string[]): Promise<void> {
+function execFile(file: string, args: string[], timeout = 240_000): Promise<void> {
     return new Promise((resolve, reject) => {
-        require('child_process').execFile(file, args, { timeout: 240_000, maxBuffer: 1024 * 1024 }, (error: Error | null, stdout: string, stderr: string) => {
+        require('child_process').execFile(file, args, { timeout, maxBuffer: 1024 * 1024 }, (error: Error | null, stdout: string, stderr: string) => {
             if (error) reject(new Error(`动态编码失败：${stderr || error.message}`));
             else resolve();
         });
@@ -85,9 +85,7 @@ export async function exportMotionCard(root: HTMLElement, format: 'mp4' | 'live'
     const path = webp ? undefined : require('path');
     let directory = '';
     const fps = webp ? 15 : FPS;
-    const frameCount = fps * DURATION_SECONDS;
-    // vivo 元数据把封面时间记为 0，所以封面取第一帧。
-    const coverIndex = format === 'vivo' ? 0 : format === 'android' ? Math.floor(frameCount / 2) : -1;
+    let frameCount = fps * DURATION_SECONDS;
     const webpFrames: Uint8Array[] = [];
     let stage = '加载动态素材';
     const loadedVideos: HTMLVideoElement[] = [];
@@ -132,6 +130,13 @@ export async function exportMotionCard(root: HTMLElement, format: 'mp4' | 'live'
             video.replaceWith(image);
             videos.push({ video, image });
         }
+        if (format === 'vivo' && videos.length) {
+            const longest = Math.max(...videos.map(item => item.video.duration));
+            // vivo 实况跟随最长视频的完整长度，不设上限；不足 5 秒时循环补到 5 秒。
+            frameCount = Math.round(Math.max(DURATION_SECONDS, longest) * fps);
+        }
+        // vivo 元数据把封面时间记为 0，所以封面取第一帧。
+        const coverIndex = format === 'vivo' ? 0 : format === 'android' ? Math.floor(frameCount / 2) : -1;
         const dimensions = webp ? webpDimensions(sourceWidth, sourceHeight) : { width: 1080, height: Math.round(sourceHeight / sourceWidth * 1080 / 2) * 2 };
         const { width, height } = dimensions;
         if (!height || height > 4096) throw new Error('卡片尺寸过大，请先分页再导出动态卡片');
@@ -191,7 +196,23 @@ export async function exportMotionCard(root: HTMLElement, format: 'mp4' | 'live'
             const packed = fitAnimatedWebp(webpFrames, width, height);
             return [{ name: 'card.webp', blob: new Blob([packed], { type: 'image/webp' }) }];
         }
-        await execFile(encoder, [directory, String(frameCount), String(FPS), format === 'android' || format === 'vivo' ? 'mp4' : format]);
+        const encoderArgs = [directory, String(frameCount), String(FPS), format === 'android' || format === 'vivo' ? 'mp4' : format];
+        if (format === 'vivo' && videos.length) {
+            // 实况的声音取第一个视频；读不到素材时导出无声实况，不中断导出。
+            try {
+                const first = videos[0].video;
+                const src = first.currentSrc || first.src;
+                const bytes = /^https?:/i.test(src) ? (await requestUrl({ url: src })).arrayBuffer : await (await fetch(src)).arrayBuffer();
+                const extension = (/\.(mp4|m4v|mov|m4a)(?:[?#]|$)/i.exec(src)?.[1] ?? 'mp4').toLowerCase();
+                const audioSource = path.join(directory, `audio-source.${extension}`);
+                await fs.writeFile(audioSource, Buffer.from(bytes));
+                encoderArgs.push(audioSource, String(first.duration));
+            } catch (error) {
+                console.warn('读取视频声音失败，导出无声实况', error);
+            }
+        }
+        // 长片段的编码时间随帧数增加，超时相应放宽。
+        await execFile(encoder, encoderArgs, Math.max(240_000, frameCount * 2_000));
         if (format === 'android') {
             if (!cover) throw new Error('未生成动态照片封面');
             const video = new Uint8Array(await fs.readFile(path.join(directory, 'card.mp4')));
